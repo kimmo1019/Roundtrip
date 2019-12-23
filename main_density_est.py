@@ -7,6 +7,7 @@ import importlib
 import tensorflow as tf
 import numpy as np
 import copy
+import math
 import metric
 import util
 
@@ -161,13 +162,13 @@ class sysmGAN(object):
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
 
-    def train(self, epochs=2000):
+    def train(self, epochs=1000):
         #data_x, label_x = self.x_sampler.load_all()
         data_y, label_y = self.y_sampler.load_all()
         #data_x = np.array(data_x,dtype='float32')
         data_y = np.array(data_y,dtype='float32')
         batch_size = self.batch_size
-        counter=1
+        counter = 1
         self.sess.run(tf.global_variables_initializer())
         start_time = time.time()
         for epoch in range(epochs):
@@ -211,31 +212,147 @@ class sysmGAN(object):
                 
                 # summary = self.sess.run(self.merged_summary,feed_dict={self.x:bx,self.y:by})
                 # self.summary_writer.add_summary(summary, counter)
-            if epoch % 5 == 0:
-                self.evaluate(timestamp,epoch)
+            if (epoch+1) % 200 == 0:
+                self.evaluate(epoch)
+                self.density_est(epoch)#E(f(x)) = int(f(x)*p(x))dx, plot f(x) and p(x)
+                self.save(epoch)
+            if epoch==999:
+                self.estimate_fy_with_IS(epoch)#density estimation with importance sampling
 
-        #self.save(timestamp)
+    #predict with y_=G(x)
+    def predict_y(self, x, bs=512):
+        assert x.shape[-1] == self.x_dim
+        N = x.shape[0]
+        y_pred = np.zeros(shape=(N, self.x_dim)) 
+        for b in range(int(np.ceil(N*1.0 / bs))):
 
-    def evaluate(self,timestamp,epoch):
+            if (b+1)*bs > N:
+               ind = np.arange(b*bs, N)
+            else:
+               ind = np.arange(b*bs, (b+1)*bs)
+            batch_x = x[ind, :]
+            batch_y_ = self.sess.run(self.y_, feed_dict={self.x:batch_x})
+            y_pred[ind, :] = batch_y_
+        return y_pred
+    
+    #predict with x_=H(y)
+    def predict_x(self,y,bs=512):
+        assert y.shape[-1] == self.y_dim
+        N = y.shape[0]
+        x_pred = np.zeros(shape=(N, self.y_dim)) 
+        for b in range(int(np.ceil(N*1.0 / bs))):
+
+            if (b+1)*bs > N:
+               ind = np.arange(b*bs, N)
+            else:
+               ind = np.arange(b*bs, (b+1)*bs)
+            batch_y = y[ind, :]
+            batch_x_ = self.sess.run(self.x_, feed_dict={self.y:batch_y})
+            x_pred[ind, :] = batch_x_
+        return x_pred
+
+    
+    def estimate_fy_with_IS(self,epoch,mu_q=0,sd_q=1,n=200,interval_len=2,sample_size=5000):
+        import matplotlib
+        matplotlib.use('agg')
+        import matplotlib.pyplot as plt
+        def f(x_batch,sd_y=0.01):
+            return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
+        def w(x,x_y,sd_q=1):
+            #mu1 = np.sum((x-x_y)**2,axis=1)
+            mu1 = np.sum(x**2,axis=1)
+            mu2 = np.sum(x**2,axis=1)
+            return (sd_q**self.x_dim)*np.exp(mu1/(2*sd_q**2)-mu2/2)
+        t=time.time()
+        grid_axis1 = np.linspace(-interval_len/2,interval_len/2,n)
+        grid_axis2 = np.linspace(-interval_len/2,interval_len/2,n)
+        v1,v2 = np.meshgrid(grid_axis1,grid_axis2)
+        y_points = np.vstack((v1.ravel(),v2.ravel())).T#shape (N,2)
+        x_points_pred = self.predict_x(y_points)
+        #x_points_pred = np.zeros((n**2,self.x_dim))
+        #x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
+        x_samples_list = [np.random.normal(0, 1,(sample_size,self.x_dim)) for each in x_points_pred]
+        g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
+        #np.save('pre.npy',g_x_samples_list[0])
+        #g_x_samples_list = [np.zeros((sample_size,self.y_dim)) for each in x_samples_list]
+        #y-G(x)
+        mu_samples_list = map(lambda x: x[0]-x[1], zip(y_points, g_x_samples_list))
+        f_return_list = map(f,mu_samples_list)
+        w_return_list = map(w,x_samples_list,x_points_pred)
+        fy_list = map(lambda x, y: x*y,f_return_list,w_return_list)
+        #fy_est = np.array([np.mean(item) for item in fy_list])
+        fy_est = np.array([np.mean(item) for item in f_return_list])
+        fy_est = fy_est.reshape((n,n))
+        #(time.time()-t)
+        plt.figure()
+        plt.pcolormesh(v1,v2,fy_est,cmap='coolwarm')
+        plt.colorbar()
+        plt.savefig('density_y_at_epoch%d_%.2f.png'%(epoch,time.time()-t))
+        plt.close()
+
+
+
+    def density_est(self,epoch,n=500,bound=5):
+        import matplotlib
+        matplotlib.use('agg')
+        import matplotlib.pyplot as plt
+        grid_axis1 = np.linspace(-bound,bound,n)#axis-dim1
+        grid_axis2 = np.linspace(-bound,bound,n)#axis-dim2
+        N = n**2
+        xv1,xv2 = np.meshgrid(grid_axis1,grid_axis2)
+        grid_x = np.vstack((xv1.ravel(),xv2.ravel())).T
+        grid_y_ = self.predict_y(grid_x)
+        def calculate_product(point_y,xv1,xv2,grid_y_,sd=1):
+            f1_mat = 1. / (np.sqrt((2 * np.pi)**2)) * np.exp(-(xv1**2+xv2**2) / 2)#with shape n*n
+            l2_norm = np.linalg.norm(point_y-grid_y_,ord=2,axis=1)
+            f2_list = 1. / ((np.sqrt(2 * np.pi)*sd)**2) * np.exp(-(l2_norm**2) / (2*sd**2))
+            f2_mat = f2_list.reshape((len(f1_mat),-1))
+            return f1_mat,f2_mat
+        y_list = 0.75*np.array([[-1,1],[-1,0],[-1,-1],[0,1],[0,0],[0,-1],[1,1],[1,0],[1,-1]],dtype='float')
+        save_dir = 'data/density_est/{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        for i in range(0,len(y_list),3):
+            plt.figure(figsize=(12, 10),dpi=100)
+            for j in range(i,i+3):
+                f1_mat,f2_mat = calculate_product(y_list[j],xv1,xv2,grid_y_)
+                plt.subplot(3,3,3*(j%3)+1)
+                plt.pcolormesh(xv1,xv2,f1_mat,cmap='coolwarm')
+                plt.title('y=(%.2f,%.2f)'%(y_list[j][0],y_list[j][1]))
+                plt.colorbar()
+                plt.subplot(3,3,3*(j%3)+2)
+                plt.pcolormesh(xv1,xv2,f2_mat,cmap='coolwarm')
+                plt.title('y=(%.2f,%.2f)'%(y_list[j][0],y_list[j][1]))
+                plt.colorbar()
+                plt.subplot(3,3,3*(j%3)+3)
+                plt.pcolormesh(xv1,xv2,f1_mat*f2_mat,cmap='coolwarm')
+                plt.title('y=(%.2f,%.2f)'%(y_list[j][0],y_list[j][1]))
+                plt.colorbar()
+            plt.savefig('%s/map_y1=%d_at_epoch%d'%(save_dir,4*(i/3-1),epoch))
+            plt.close()
+
+    def evaluate(self,epoch):
         #use all data
         data_x, _ = self.x_sampler.load_all()
         data_y, _ = self.y_sampler.load_all()
         #assert data_x.shape[0] == data_y.shape[0]
-        N = data_x.shape[0]
-        data_x_ = np.zeros(shape=(N, self.x_dim)) 
-        data_y_ = np.zeros(shape=(N, self.y_dim)) 
+        data_x_ = self.predict_x(data_y,2**20)
+        data_y_ = self.predict_y(data_x,2**20)
+        # N = data_x.shape[0]
+        # data_x_ = np.zeros(shape=(N, self.x_dim)) 
+        # data_y_ = np.zeros(shape=(N, self.y_dim)) 
 
-        for b in range(int(np.ceil(N*1.0 / self.batch_size))):
+        # for b in range(int(np.ceil(N*1.0 / self.batch_size))):
 
-            if (b+1)*self.batch_size > N:
-               ind = np.arange(b*self.batch_size, N)
-            else:
-               ind = np.arange(b*self.batch_size, (b+1)*self.batch_size)
-            batch_x = data_x[ind, :]
-            batch_y = data_y[ind, :]
-            batch_x_, batch_y_ = self.sess.run([self.x_, self.y_], feed_dict={self.x:batch_x, self.y:batch_y})
-            data_x_[ind, :] = batch_x_
-            data_y_[ind, :] = batch_y_
+        #     if (b+1)*self.batch_size > N:
+        #        ind = np.arange(b*self.batch_size, N)
+        #     else:
+        #        ind = np.arange(b*self.batch_size, (b+1)*self.batch_size)
+        #     batch_x = data_x[ind, :]
+        #     batch_y = data_y[ind, :]
+        #     batch_x_, batch_y_ = self.sess.run([self.x_, self.y_], feed_dict={self.x:batch_x, self.y:batch_y})
+        #     data_x_[ind, :] = batch_x_
+        #     data_y_[ind, :] = batch_y_
         save_dir = 'data/density_est/{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -265,27 +382,25 @@ class sysmGAN(object):
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         plt.savefig('%s/2D_density_%d_%d_%s.png'%(save_dir,dim1,dim2,epoch))
+        plt.close()
 
 
 
 
-    def save(self, timestamp):
+    def save(self,epoch):
 
-        checkpoint_dir = 'checkpoint_dir/{}/{}_{}_{}_{}_{}'.format(self.data, timestamp, self.x_dim,
-                                                                             self.y_dim, self.alpha,
-                                                                             self.beta)
+        checkpoint_dir = 'checkpoint_dir/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,self.y_dim, self.alpha,self.beta)
 
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
 
-        self.saver.save(self.sess, os.path.join(checkpoint_dir, 'model.ckpt'))
+        self.saver.save(self.sess, os.path.join(checkpoint_dir, 'model.ckpt'),global_step=epoch)
 
     def load(self, pre_trained = False, timestamp = ''):
 
         if pre_trained == True:
             print('Loading Pre-trained Model...')
-            checkpoint_dir = 'pre_trained_models/{}/{}_{}_{}_{}}'.format(self.data, self.x_dim,
-                                                                            self.y_dim, self.alpha, self.beta)
+            checkpoint_dir = 'pre_trained_models/{}/{}_{}_{}_{}}'.format(self.data, self.x_dim,self.y_dim, self.alpha, self.beta)
         else:
             if timestamp == '':
                 print('Best Timestamp not provided. Abort !')
@@ -301,7 +416,7 @@ class sysmGAN(object):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('')
     parser.add_argument('--data', type=str, default='simutation_data')
-    parser.add_argument('--model', type=str, default='model_sysm')
+    parser.add_argument('--model', type=str, default='model_density_est')
     parser.add_argument('--dx', type=int, default=10)
     parser.add_argument('--dy', type=int, default=10)
     parser.add_argument('--bs', type=int, default=64)
@@ -338,17 +453,34 @@ if __name__ == '__main__':
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
     ################ gaussian mixture with 4 components############
-    #mean = np.array([[0.75, 0.75],[-0.75, 0.75],[0.75, -0.75],[-0.75, -0.75]])
     mean = 0.75*np.array([[1, 1],[-1, 1],[1, -1],[-1, -1]])
     sd = 0.05
     cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
-    # cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov2 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov3 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov4 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov = np.array([cov1,cov2,cov3,cov4])
+    cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    cov2 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    cov3 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    cov4 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    cov = np.array([cov1,cov2,cov3,cov4])
     weights = [0.25,0.25,0.25,0.25]
     ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
+
+    ################ gaussian mixture with 8-10 components forming a circle############
+    # n_components = 8
+    # def cal_cov(theta,sx=1,sy=0.4**2):
+    #     Scale = np.array([[sx, 0], [0, sy]])
+    #     #theta = 0*np.pi/4.0
+    #     c, s = np.cos(theta), np.sin(theta)
+    #     Rot = np.array([[c, -s], [s, c]])
+    #     T = Rot.dot(Scale)
+    #     Cov = T.dot(T.T)
+    #     return Cov
+    # radius = 3
+    # mean = np.array([[radius*math.cos(2*np.pi*idx/float(n_components)),radius*math.sin(2*np.pi*idx/float(n_components))] for idx in range(n_components)])
+    # cov = np.array([cal_cov(2*np.pi*idx/float(n_components)) for idx in range(n_components)])
+    # ys = util.GMM_sampler(N=20000,mean=mean,cov=cov)
+
+    ################ swiss roll##############
+    #ys = util.Swiss_roll_sampler(N=20000)
 
     ################ gaussian mixture plus normal plus uniform############
     # mean = np.array([[0.25, 0.25, 0.25],[0.75, 0.75, 0.75]])
@@ -374,5 +506,26 @@ if __name__ == '__main__':
             timestamp = 'pre-trained'
         else:
             cl_gan.load(pre_trained=False, timestamp = timestamp)
+            cl_gan.estimate_fy_with_IS(999)
+            sys.exit()
+            #model test
+            
+            grid_axis1 = np.linspace(-5,5,200)#axis-dim1
+            grid_axis2 = np.linspace(-5,5,200)#axis-dim2
+            xv1,xv2 = np.meshgrid(grid_axis1,grid_axis2)
+            data_x = np.vstack((xv1.ravel(),xv2.ravel())).T
+            #data_x = xs.get_batch(300000)
+            data_y_ = cl_gan.predict_y(data_x)
+            import matplotlib
+            matplotlib.use('agg')
+            import matplotlib.pyplot as plt 
+            plt.figure()
+            plt.hist2d(data_y_[:,0],data_y_[:,1],bins=1000)
+            plt.savefig('test1.png')
+            plt.close()
+            #cl_gan.estimate_fy_with_IS(999)
+
+
+    
 
 
