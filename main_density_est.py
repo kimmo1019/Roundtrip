@@ -416,7 +416,7 @@ class sysmGAN(object):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('')
     parser.add_argument('--data', type=str, default='simutation_data')
-    parser.add_argument('--model', type=str, default='model_density_est')
+    parser.add_argument('--model', type=str, default='model')
     parser.add_argument('--dx', type=int, default=10)
     parser.add_argument('--dy', type=int, default=10)
     parser.add_argument('--bs', type=int, default=64)
