@@ -156,7 +156,6 @@ class sysmGAN(object):
         # self.summary_writer=tf.summary.FileWriter(graph_dir,graph=tf.get_default_graph())
 
         self.saver = tf.train.Saver()
-
         run_config = tf.ConfigProto()
         run_config.gpu_options.per_process_gpu_memory_fraction = 1.0
         run_config.gpu_options.allow_growth = True
@@ -214,12 +213,13 @@ class sysmGAN(object):
                 # self.summary_writer.add_summary(summary, counter)
             if (epoch+1) % 200 == 0:
                 self.evaluate(epoch)
-                self.density_est(epoch)#E(f(x)) = int(f(x)*p(x))dx, plot f(x) and p(x)
+                #self.density_est(epoch)#E(f(x)) = int(f(x)*p(x))dx, plot f(x) and p(x)
                 self.save(epoch)
             if epoch==999:
-                self.estimate_fy_with_IS(epoch)#density estimation with importance sampling
+                pass
+                #self.estimate_fy_with_IS(epoch)#density estimation with importance sampling
 
-    #predict with y_=G(x)
+    #predict with G network y_=G(x)
     def predict_y(self, x, bs=512):
         assert x.shape[-1] == self.x_dim
         N = x.shape[0]
@@ -235,7 +235,7 @@ class sysmGAN(object):
             y_pred[ind, :] = batch_y_
         return y_pred
     
-    #predict with x_=H(y)
+    #predict with H network x_=H(y)
     def predict_x(self,y,bs=512):
         assert y.shape[-1] == self.y_dim
         N = y.shape[0]
@@ -256,7 +256,7 @@ class sysmGAN(object):
         import matplotlib
         matplotlib.use('agg')
         import matplotlib.pyplot as plt
-        def f(x_batch,sd_y=0.01):
+        def f(x_batch,sd_y=0.1):
             return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
         def w(x,x_y,sd_q=1):
             #mu1 = np.sum((x-x_y)**2,axis=1)
@@ -332,34 +332,15 @@ class sysmGAN(object):
             plt.close()
 
     def evaluate(self,epoch):
-        #use all data
         data_x, _ = self.x_sampler.load_all()
         data_y, _ = self.y_sampler.load_all()
-        #assert data_x.shape[0] == data_y.shape[0]
         data_x_ = self.predict_x(data_y,2**20)
         data_y_ = self.predict_y(data_x,2**20)
-        # N = data_x.shape[0]
-        # data_x_ = np.zeros(shape=(N, self.x_dim)) 
-        # data_y_ = np.zeros(shape=(N, self.y_dim)) 
-
-        # for b in range(int(np.ceil(N*1.0 / self.batch_size))):
-
-        #     if (b+1)*self.batch_size > N:
-        #        ind = np.arange(b*self.batch_size, N)
-        #     else:
-        #        ind = np.arange(b*self.batch_size, (b+1)*self.batch_size)
-        #     batch_x = data_x[ind, :]
-        #     batch_y = data_y[ind, :]
-        #     batch_x_, batch_y_ = self.sess.run([self.x_, self.y_], feed_dict={self.x:batch_x, self.y:batch_y})
-        #     data_x_[ind, :] = batch_x_
-        #     data_y_[ind, :] = batch_y_
         save_dir = 'data/density_est/{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         np.savez('{}/data_at_{}.npz'.format(save_dir, epoch),data_x,data_y,data_x_,data_y_)
         self.plot_density_2D([data_x,data_y,data_x_,data_y_], '%s/figs'%save_dir, epoch)
-        #sys.exit()
-        #calculate KL-divergency of data_x_ and data_x, data_y_ and data_y
 
     def plot_density_2D(self,data,save_dir,epoch,dim1=0,dim2=1):
         import matplotlib
@@ -389,7 +370,7 @@ class sysmGAN(object):
 
     def save(self,epoch):
 
-        checkpoint_dir = 'checkpoint_dir/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,self.y_dim, self.alpha,self.beta)
+        checkpoint_dir = 'checkpoint/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,self.y_dim, self.alpha,self.beta)
 
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
@@ -406,7 +387,7 @@ class sysmGAN(object):
                 print('Best Timestamp not provided. Abort !')
                 checkpoint_dir = ''
             else:
-                checkpoint_dir = 'checkpoint_dir/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,
+                checkpoint_dir = 'checkpoint/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,
                                                                             self.y_dim, self.alpha, self.beta)
 
 
@@ -506,24 +487,21 @@ if __name__ == '__main__':
             timestamp = 'pre-trained'
         else:
             cl_gan.load(pre_trained=False, timestamp = timestamp)
-            cl_gan.estimate_fy_with_IS(999)
-            sys.exit()
-            #model test
-            
+            #cl_gan.estimate_fy_with_IS(999)
             grid_axis1 = np.linspace(-5,5,200)#axis-dim1
             grid_axis2 = np.linspace(-5,5,200)#axis-dim2
             xv1,xv2 = np.meshgrid(grid_axis1,grid_axis2)
-            data_x = np.vstack((xv1.ravel(),xv2.ravel())).T
-            #data_x = xs.get_batch(300000)
-            data_y_ = cl_gan.predict_y(data_x)
+            data = np.vstack((xv1.ravel(),xv2.ravel())).T
+            #data = xs.get_batch(300000)
+            data_y_ = cl_gan.predict_y(data)
+            data_x_ = cl_gan.predict_x(data)
             import matplotlib
             matplotlib.use('agg')
             import matplotlib.pyplot as plt 
             plt.figure()
-            plt.hist2d(data_y_[:,0],data_y_[:,1],bins=1000)
-            plt.savefig('test1.png')
+            plt.hist2d(data_x_[:,0],data_x_[:,1],bins=1000)
+            plt.savefig('test_x.png')
             plt.close()
-            #cl_gan.estimate_fy_with_IS(999)
 
 
     
