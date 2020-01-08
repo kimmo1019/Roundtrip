@@ -156,12 +156,13 @@ class sysmGAN(object):
         # self.summary_writer=tf.summary.FileWriter(graph_dir,graph=tf.get_default_graph())
 
         self.saver = tf.train.Saver()
+
         run_config = tf.ConfigProto()
         run_config.gpu_options.per_process_gpu_memory_fraction = 1.0
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
 
-    def train(self, epochs=1000):
+    def train(self, epochs=3000):
         #data_x, label_x = self.x_sampler.load_all()
         data_y, label_y = self.y_sampler.load_all()
         #data_x = np.array(data_x,dtype='float32')
@@ -206,20 +207,19 @@ class sysmGAN(object):
                         l1_loss_y [%.4f] g_loss [%.4f] h_loss [%.4f] g_h_loss [%.4f] dx_loss [%.4f] \
                         dy_loss [%.4f] d_loss [%.4f]' %
                         (counter, time.time() - start_time, g_loss_adv, h_loss_adv, l1_loss_x, l1_loss_y, \
-                        g_loss, h_loss, g_h_loss, dx_loss, dy_loss, d_loss))                    
+                        g_loss, h_loss, g_h_loss, dx_loss, dy_loss, d_loss))                 
                 counter+=1
                 
                 # summary = self.sess.run(self.merged_summary,feed_dict={self.x:bx,self.y:by})
                 # self.summary_writer.add_summary(summary, counter)
             if (epoch+1) % 200 == 0:
                 self.evaluate(epoch)
-                #self.density_est(epoch)#E(f(x)) = int(f(x)*p(x))dx, plot f(x) and p(x)
+                #self.density_est(epoch)
                 self.save(epoch)
-            if epoch==999:
-                pass
-                #self.estimate_fy_with_IS(epoch)#density estimation with importance sampling
+            if (epoch+1) % 3000==0:
+                self.estimate_fy_with_IS(epoch)#density estimation with importance sampling
 
-    #predict with G network y_=G(x)
+    #predict with y_=G(x)
     def predict_y(self, x, bs=512):
         assert x.shape[-1] == self.x_dim
         N = x.shape[0]
@@ -235,7 +235,7 @@ class sysmGAN(object):
             y_pred[ind, :] = batch_y_
         return y_pred
     
-    #predict with H network x_=H(y)
+    #predict with x_=H(y)
     def predict_x(self,y,bs=512):
         assert y.shape[-1] == self.y_dim
         N = y.shape[0]
@@ -252,15 +252,15 @@ class sysmGAN(object):
         return x_pred
 
     
-    def estimate_fy_with_IS(self,epoch,mu_q=0,sd_q=1,n=200,interval_len=2,sample_size=5000):
+    def estimate_fy_with_IS(self,epoch,sd_q=1,n=200,interval_len=10,sample_size=5000):
         import matplotlib
         matplotlib.use('agg')
         import matplotlib.pyplot as plt
         def f(x_batch,sd_y=0.1):
             return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
         def w(x,x_y,sd_q=1):
-            #mu1 = np.sum((x-x_y)**2,axis=1)
-            mu1 = np.sum(x**2,axis=1)
+            mu1 = np.sum((x-x_y)**2,axis=1)
+            #mu1 = np.sum(x**2,axis=1)
             mu2 = np.sum(x**2,axis=1)
             return (sd_q**self.x_dim)*np.exp(mu1/(2*sd_q**2)-mu2/2)
         t=time.time()
@@ -270,8 +270,8 @@ class sysmGAN(object):
         y_points = np.vstack((v1.ravel(),v2.ravel())).T#shape (N,2)
         x_points_pred = self.predict_x(y_points)
         #x_points_pred = np.zeros((n**2,self.x_dim))
-        #x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
-        x_samples_list = [np.random.normal(0, 1,(sample_size,self.x_dim)) for each in x_points_pred]
+        x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
+        #x_samples_list = [np.random.normal(0, 1,(sample_size,self.x_dim)) for each in x_points_pred]
         g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
         #np.save('pre.npy',g_x_samples_list[0])
         #g_x_samples_list = [np.zeros((sample_size,self.y_dim)) for each in x_samples_list]
@@ -280,8 +280,8 @@ class sysmGAN(object):
         f_return_list = map(f,mu_samples_list)
         w_return_list = map(w,x_samples_list,x_points_pred)
         fy_list = map(lambda x, y: x*y,f_return_list,w_return_list)
-        #fy_est = np.array([np.mean(item) for item in fy_list])
-        fy_est = np.array([np.mean(item) for item in f_return_list])
+        fy_est = np.array([np.mean(item) for item in fy_list])
+        #fy_est = np.array([np.mean(item) for item in f_return_list])
         fy_est = fy_est.reshape((n,n))
         #(time.time()-t)
         plt.figure()
@@ -290,7 +290,44 @@ class sysmGAN(object):
         plt.savefig('density_y_at_epoch%d_%.2f.png'%(epoch,time.time()-t))
         plt.close()
 
-
+    def estimate_fy_with_IS_v2(self,epoch,sd_q=1,n=200,interval_len=10,sample_size=5000):#using student t distribution
+        import matplotlib
+        matplotlib.use('agg')
+        import matplotlib.pyplot as plt
+        def f(x_batch,sd_y=0.1):
+            return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
+        def w(x,x_y,sd_q=1):
+            mu1 = np.sum((x-x_y)**2,axis=1)
+            #mu1 = np.sum(x**2,axis=1)
+            mu2 = np.sum(x**2,axis=1)
+            return (sd_q**self.x_dim)*np.exp(mu1/(2*sd_q**2)-mu2/2)
+        t=time.time()
+        grid_axis1 = np.linspace(-interval_len/2,interval_len/2,n)
+        grid_axis2 = np.linspace(-interval_len/2,interval_len/2,n)
+        v1,v2 = np.meshgrid(grid_axis1,grid_axis2)
+        y_points = np.vstack((v1.ravel(),v2.ravel())).T#shape (N,2)
+        x_points_pred = self.predict_x(y_points)
+        #x_points_pred = np.zeros((n**2,self.x_dim))
+        
+        x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
+        #x_samples_list = [np.random.normal(0, 1,(sample_size,self.x_dim)) for each in x_points_pred]
+        g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
+        #np.save('pre.npy',g_x_samples_list[0])
+        #g_x_samples_list = [np.zeros((sample_size,self.y_dim)) for each in x_samples_list]
+        #y-G(x)
+        mu_samples_list = map(lambda x: x[0]-x[1], zip(y_points, g_x_samples_list))
+        f_return_list = map(f,mu_samples_list)
+        w_return_list = map(w,x_samples_list,x_points_pred)
+        fy_list = map(lambda x, y: x*y,f_return_list,w_return_list)
+        fy_est = np.array([np.mean(item) for item in fy_list])
+        #fy_est = np.array([np.mean(item) for item in f_return_list])
+        fy_est = fy_est.reshape((n,n))
+        #(time.time()-t)
+        plt.figure()
+        plt.pcolormesh(v1,v2,fy_est,cmap='coolwarm')
+        plt.colorbar()
+        plt.savefig('density_y_at_epoch%d_%.2f.png'%(epoch,time.time()-t))
+        plt.close()
 
     def density_est(self,epoch,n=500,bound=5):
         import matplotlib
@@ -302,10 +339,10 @@ class sysmGAN(object):
         xv1,xv2 = np.meshgrid(grid_axis1,grid_axis2)
         grid_x = np.vstack((xv1.ravel(),xv2.ravel())).T
         grid_y_ = self.predict_y(grid_x)
-        def calculate_product(point_y,xv1,xv2,grid_y_,sd=1):
-            f1_mat = 1. / (np.sqrt((2 * np.pi)**2)) * np.exp(-(xv1**2+xv2**2) / 2)#with shape n*n
+        def calculate_product(point_y,xv1,xv2,grid_y_,sd=0.05):
+            f1_mat = 1. / (np.sqrt((2 * np.pi)**self.x_dim)) * np.exp(-(xv1**2+xv2**2) / 2)#with shape n*n
             l2_norm = np.linalg.norm(point_y-grid_y_,ord=2,axis=1)
-            f2_list = 1. / ((np.sqrt(2 * np.pi)*sd)**2) * np.exp(-(l2_norm**2) / (2*sd**2))
+            f2_list = 1. / ((np.sqrt(2 * np.pi)*sd)**self.y_dim) * np.exp(-(l2_norm**2) / (2*sd**2))
             f2_mat = f2_list.reshape((len(f1_mat),-1))
             return f1_mat,f2_mat
         y_list = 0.75*np.array([[-1,1],[-1,0],[-1,-1],[0,1],[0,0],[0,-1],[1,1],[1,0],[1,-1]],dtype='float')
@@ -332,15 +369,19 @@ class sysmGAN(object):
             plt.close()
 
     def evaluate(self,epoch):
+        #use all data
         data_x, _ = self.x_sampler.load_all()
         data_y, _ = self.y_sampler.load_all()
-        data_x_ = self.predict_x(data_y,2**20)
-        data_y_ = self.predict_y(data_x,2**20)
+        #assert data_x.shape[0] == data_y.shape[0]
+        data_x_ = self.predict_x(data_y)
+        data_y_ = self.predict_y(data_x)
         save_dir = 'data/density_est/{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         np.savez('{}/data_at_{}.npz'.format(save_dir, epoch),data_x,data_y,data_x_,data_y_)
         self.plot_density_2D([data_x,data_y,data_x_,data_y_], '%s/figs'%save_dir, epoch)
+        #sys.exit()
+        #calculate KL-divergency of data_x_ and data_x, data_y_ and data_y
 
     def plot_density_2D(self,data,save_dir,epoch,dim1=0,dim2=1):
         import matplotlib
@@ -421,7 +462,7 @@ if __name__ == '__main__':
     dy_net = model.Discriminator(input_dim = y_dim,name='dy_net')
     #xs = util.Y_sampler(N=10000, n_components=2,dim=y_dim,mean=3.0,sd=0.5)
     #ys = util.Y_sampler(N=10000, n_components=2,dim=x_dim,mean=0.0,sd=1)
-    xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
+    xs = util.Gaussian_sampler(N=20000,mean=np.zeros(x_dim),sd=1.0)
     #xs = util.X_sampler(N=10000, dim=x_dim, mean=3.0)
     #ys = util.Gaussian_sampler(N=10000,mean=np.zeros(y_dim),sd=1.0)
 
@@ -434,16 +475,16 @@ if __name__ == '__main__':
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
     ################ gaussian mixture with 4 components############
-    mean = 0.75*np.array([[1, 1],[-1, 1],[1, -1],[-1, -1]])
-    sd = 0.05
-    cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
-    cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    cov2 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    cov3 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    cov4 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    cov = np.array([cov1,cov2,cov3,cov4])
-    weights = [0.25,0.25,0.25,0.25]
-    ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
+    # mean = 0.75*np.array([[1, 1],[-1, 1],[1, -1],[-1, -1]])
+    # sd = 0.05
+    # cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
+    # cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    # cov2 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    # cov3 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    # cov4 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    # cov = np.array([cov1,cov2,cov3,cov4])
+    # weights = [0.25,0.25,0.25,0.25]
+    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
     ################ gaussian mixture with 8-10 components forming a circle############
     # n_components = 8
@@ -458,10 +499,10 @@ if __name__ == '__main__':
     # radius = 3
     # mean = np.array([[radius*math.cos(2*np.pi*idx/float(n_components)),radius*math.sin(2*np.pi*idx/float(n_components))] for idx in range(n_components)])
     # cov = np.array([cal_cov(2*np.pi*idx/float(n_components)) for idx in range(n_components)])
-    # ys = util.GMM_sampler(N=20000,mean=mean,cov=cov)
+    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
 
     ################ swiss roll##############
-    #ys = util.Swiss_roll_sampler(N=20000)
+    ys = util.Swiss_roll_sampler(N=20000)
 
     ################ gaussian mixture plus normal plus uniform############
     # mean = np.array([[0.25, 0.25, 0.25],[0.75, 0.75, 0.75]])
@@ -487,21 +528,27 @@ if __name__ == '__main__':
             timestamp = 'pre-trained'
         else:
             cl_gan.load(pre_trained=False, timestamp = timestamp)
-            #cl_gan.estimate_fy_with_IS(999)
+            cl_gan.estimate_fy_with_IS(999)
+            sys.exit()
             grid_axis1 = np.linspace(-5,5,200)#axis-dim1
             grid_axis2 = np.linspace(-5,5,200)#axis-dim2
             xv1,xv2 = np.meshgrid(grid_axis1,grid_axis2)
             data = np.vstack((xv1.ravel(),xv2.ravel())).T
-            #data = xs.get_batch(300000)
+            #data_x = xs.get_batch(300000)
             data_y_ = cl_gan.predict_y(data)
             data_x_ = cl_gan.predict_x(data)
+            np.savez('data.npz',data,data_x_)
             import matplotlib
             matplotlib.use('agg')
             import matplotlib.pyplot as plt 
             plt.figure()
-            plt.hist2d(data_x_[:,0],data_x_[:,1],bins=1000)
-            plt.savefig('test_x.png')
+            plt.hist2d(data_x_[:,0],data_x_[:,1],bins=8000)
+            plt.colorbar()
+            plt.xlim(-3,3)
+            plt.ylim(-3,3)
+            plt.savefig('test_x2.png')
             plt.close()
+            #cl_gan.estimate_fy_with_IS(999)
 
 
     

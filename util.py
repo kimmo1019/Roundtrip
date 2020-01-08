@@ -155,6 +155,25 @@ class GMM_sampler(object):
     def load_all(self):
         return self.X, self.Y
 
+class Swiss_roll_sampler(object):
+    def __init__(self, N, theta=2*np.pi, scale=2, sigma=0.2):
+        self.total_size = N
+        self.theta = theta
+        self.scale = scale
+        self.sigma = sigma
+        np.random.seed(1024)
+        params = np.linspace(0,self.theta,self.total_size)
+        self.X_center = np.vstack((params*np.sin(scale*params),params*np.cos(scale*params)))
+        self.X = self.X_center.T + np.random.normal(0,sigma,size=(self.total_size,2))
+        self.Y = None
+        
+    def train(self, batch_size, label = False):
+        indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
+        return self.X[indx, :]
+
+    def load_all(self):
+        return self.X, self.Y
+
 class GMM_Uni_sampler(object):
     def __init__(self, N, mean, cov, norm_dim=2,uni_dim=10,weights=None):
         self.total_size = N
