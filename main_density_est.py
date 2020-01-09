@@ -163,7 +163,7 @@ class sysmGAN(object):
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
 
-    def train(self, epochs=3000):
+    def train(self, epochs=1000):
         #data_x, label_x = self.x_sampler.load_all()
         data_y, label_y = self.y_sampler.load_all()
         #data_x = np.array(data_x,dtype='float32')
@@ -290,15 +290,16 @@ class sysmGAN(object):
         plt.savefig('density_y_at_epoch%d_%.2f.png'%(epoch,time.time()-t))
         plt.close()
 
-    def estimate_fy_with_IS_v2(self,epoch,sd_q=1,n=200,interval_len=2,sample_size=5000):#using student t distribution
+    def estimate_fy_with_IS_v2(self,epoch,degree=100,n=200,interval_len=2,sample_size=5000):#using student t distribution
         from scipy.stats import t
         import matplotlib
         matplotlib.use('agg')
         import matplotlib.pyplot as plt
         def f(x_batch,sd_y=0.1):
             return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
-        def w(x,x_y):
-            q_x = np.prod(1. / (((x-x_y)**2+1)*np.pi), axis=1) #length=sample_size
+        def w(x,x_y,degree=100):
+            t_pdf = t.pdf(x-x_y,degree) #shape sample_size * x_dim
+            q_x = np.prod(t_pdf,axis=1)
             p_x = 1. / ((np.sqrt(2 * np.pi))**self.x_dim) * np.exp(-np.sum(x**2,axis=1)/2) #length=sample_size
             return p_x/q_x
         grid_axis1 = np.linspace(-interval_len/2,interval_len/2,n)
@@ -309,7 +310,7 @@ class sysmGAN(object):
         #x_points_pred = np.zeros((n**2,self.x_dim))
         
         #x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
-        x_samples_list = [np.hstack([t.rvs(1, loc=item, scale=1, size=(sample_size,1), random_state=1) for item in each]) for each in x_points_pred]
+        x_samples_list = [np.hstack([t.rvs(degree, loc=item, scale=1, size=(sample_size,1), random_state=1) for item in each]) for each in x_points_pred]
         g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
         #np.save('pre.npy',g_x_samples_list[0])
         #g_x_samples_list = [np.zeros((sample_size,self.y_dim)) for each in x_samples_list]
@@ -474,16 +475,16 @@ if __name__ == '__main__':
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
     ################ gaussian mixture with 4 components############
-    # mean = 0.75*np.array([[1, 1],[-1, 1],[1, -1],[-1, -1]])
-    # sd = 0.05
-    # cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
-    # cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov2 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov3 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov4 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov = np.array([cov1,cov2,cov3,cov4])
-    # weights = [0.25,0.25,0.25,0.25]
-    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
+    mean = 0.75*np.array([[1, 1],[-1, 1],[1, -1],[-1, -1]])
+    sd = 0.05
+    cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
+    cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    cov2 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    cov3 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    cov4 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    cov = np.array([cov1,cov2,cov3,cov4])
+    weights = [0.25,0.25,0.25,0.25]
+    ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
     ################ gaussian mixture with 8-10 components forming a circle############
     # n_components = 8
@@ -501,7 +502,7 @@ if __name__ == '__main__':
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
 
     ################ swiss roll##############
-    ys = util.Swiss_roll_sampler(N=20000)
+    #ys = util.Swiss_roll_sampler(N=20000)
 
     ################ gaussian mixture plus normal plus uniform############
     # mean = np.array([[0.25, 0.25, 0.25],[0.75, 0.75, 0.75]])
