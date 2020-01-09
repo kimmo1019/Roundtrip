@@ -10,6 +10,7 @@ import copy
 import math
 import metric
 import util
+from functools import reduce
 
 tf.set_random_seed(0)
 
@@ -216,8 +217,8 @@ class sysmGAN(object):
                 self.evaluate(epoch)
                 #self.density_est(epoch)
                 self.save(epoch)
-            if (epoch+1) % 3000==0:
-                self.estimate_fy_with_IS(epoch)#density estimation with importance sampling
+            if (epoch+1) % 1000==0:
+                self.estimate_fy_with_IS_v2(epoch)#density estimation with importance sampling
 
     #predict with y_=G(x)
     def predict_y(self, x, bs=512):
@@ -259,11 +260,10 @@ class sysmGAN(object):
         def f(x_batch,sd_y=0.1):
             return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
         def w(x,x_y,sd_q=1):
-            mu1 = np.sum((x-x_y)**2,axis=1)
+            mu1 = np.sum((x-x_y)**2,axis=1) #length=sample_size
             #mu1 = np.sum(x**2,axis=1)
-            mu2 = np.sum(x**2,axis=1)
+            mu2 = np.sum(x**2,axis=1) 
             return (sd_q**self.x_dim)*np.exp(mu1/(2*sd_q**2)-mu2/2)
-        t=time.time()
         grid_axis1 = np.linspace(-interval_len/2,interval_len/2,n)
         grid_axis2 = np.linspace(-interval_len/2,interval_len/2,n)
         v1,v2 = np.meshgrid(grid_axis1,grid_axis2)
@@ -290,18 +290,17 @@ class sysmGAN(object):
         plt.savefig('density_y_at_epoch%d_%.2f.png'%(epoch,time.time()-t))
         plt.close()
 
-    def estimate_fy_with_IS_v2(self,epoch,sd_q=1,n=200,interval_len=10,sample_size=5000):#using student t distribution
+    def estimate_fy_with_IS_v2(self,epoch,sd_q=1,n=200,interval_len=2,sample_size=5000):#using student t distribution
+        from scipy.stats import t
         import matplotlib
         matplotlib.use('agg')
         import matplotlib.pyplot as plt
         def f(x_batch,sd_y=0.1):
             return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
-        def w(x,x_y,sd_q=1):
-            mu1 = np.sum((x-x_y)**2,axis=1)
-            #mu1 = np.sum(x**2,axis=1)
-            mu2 = np.sum(x**2,axis=1)
-            return (sd_q**self.x_dim)*np.exp(mu1/(2*sd_q**2)-mu2/2)
-        t=time.time()
+        def w(x,x_y):
+            q_x = np.prod(1. / (((x-x_y)**2+1)*np.pi), axis=1) #length=sample_size
+            p_x = 1. / ((np.sqrt(2 * np.pi))**self.x_dim) * np.exp(-np.sum(x**2,axis=1)/2) #length=sample_size
+            return p_x/q_x
         grid_axis1 = np.linspace(-interval_len/2,interval_len/2,n)
         grid_axis2 = np.linspace(-interval_len/2,interval_len/2,n)
         v1,v2 = np.meshgrid(grid_axis1,grid_axis2)
@@ -309,8 +308,8 @@ class sysmGAN(object):
         x_points_pred = self.predict_x(y_points)
         #x_points_pred = np.zeros((n**2,self.x_dim))
         
-        x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
-        #x_samples_list = [np.random.normal(0, 1,(sample_size,self.x_dim)) for each in x_points_pred]
+        #x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
+        x_samples_list = [np.hstack([t.rvs(1, loc=item, scale=1, size=(sample_size,1), random_state=1) for item in each]) for each in x_points_pred]
         g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
         #np.save('pre.npy',g_x_samples_list[0])
         #g_x_samples_list = [np.zeros((sample_size,self.y_dim)) for each in x_samples_list]
@@ -326,7 +325,7 @@ class sysmGAN(object):
         plt.figure()
         plt.pcolormesh(v1,v2,fy_est,cmap='coolwarm')
         plt.colorbar()
-        plt.savefig('density_y_at_epoch%d_%.2f.png'%(epoch,time.time()-t))
+        plt.savefig('density_y_at_epoch%d_%s.png'%(epoch,self.timestamp))
         plt.close()
 
     def density_est(self,epoch,n=500,bound=5):
@@ -462,7 +461,7 @@ if __name__ == '__main__':
     dy_net = model.Discriminator(input_dim = y_dim,name='dy_net')
     #xs = util.Y_sampler(N=10000, n_components=2,dim=y_dim,mean=3.0,sd=0.5)
     #ys = util.Y_sampler(N=10000, n_components=2,dim=x_dim,mean=0.0,sd=1)
-    xs = util.Gaussian_sampler(N=20000,mean=np.zeros(x_dim),sd=1.0)
+    xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
     #xs = util.X_sampler(N=10000, dim=x_dim, mean=3.0)
     #ys = util.Gaussian_sampler(N=10000,mean=np.zeros(y_dim),sd=1.0)
 
