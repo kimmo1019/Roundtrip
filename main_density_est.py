@@ -163,7 +163,7 @@ class sysmGAN(object):
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
 
-    def train(self, epochs=1000):
+    def train(self, epochs=3000):
         #data_x, label_x = self.x_sampler.load_all()
         data_y, label_y = self.y_sampler.load_all()
         #data_x = np.array(data_x,dtype='float32')
@@ -290,14 +290,16 @@ class sysmGAN(object):
         plt.savefig('density_y_at_epoch%d_%.2f.png'%(epoch,time.time()-t))
         plt.close()
 
-    def estimate_fy_with_IS_v2(self,epoch,degree=100,n=200,interval_len=2,sample_size=5000):#using student t distribution
+    def estimate_fy_with_IS_v2(self,epoch,degree=100000,n=200,interval_len=10,sample_size=5000):#using student t distribution
+        sd_q = 1
         from scipy.stats import t
         import matplotlib
         matplotlib.use('agg')
         import matplotlib.pyplot as plt
         def f(x_batch,sd_y=0.1):
             return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
-        def w(x,x_y,degree=100):
+        def w(x,x_y,degree=100000):
+            #q_x = 1. / ((np.sqrt(2 * np.pi)*sd_q)**self.x_dim) * np.exp(-np.sum((x-x_y)**2,axis=1)/(2*sd_q**2))
             t_pdf = t.pdf(x-x_y,degree) #shape sample_size * x_dim
             q_x = np.prod(t_pdf,axis=1)
             p_x = 1. / ((np.sqrt(2 * np.pi))**self.x_dim) * np.exp(-np.sum(x**2,axis=1)/2) #length=sample_size
@@ -310,7 +312,7 @@ class sysmGAN(object):
         #x_points_pred = np.zeros((n**2,self.x_dim))
         
         #x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
-        x_samples_list = [np.hstack([t.rvs(degree, loc=item, scale=1, size=(sample_size,1), random_state=1) for item in each]) for each in x_points_pred]
+        x_samples_list = [np.hstack([t.rvs(degree, loc=item, scale=1, size=(sample_size,1)) for item in each]) for each in x_points_pred]
         g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
         #np.save('pre.npy',g_x_samples_list[0])
         #g_x_samples_list = [np.zeros((sample_size,self.y_dim)) for each in x_samples_list]
@@ -411,14 +413,14 @@ class sysmGAN(object):
 
     def save(self,epoch):
 
-        checkpoint_dir = 'checkpoint/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,self.y_dim, self.alpha,self.beta)
+        checkpoint_dir = 'checkpoint/{}/{}'.format(self.data, self.timestamp)
 
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
 
         self.saver.save(self.sess, os.path.join(checkpoint_dir, 'model.ckpt'),global_step=epoch)
 
-    def load(self, pre_trained = False, timestamp = ''):
+    def load(self, pre_trained = False, timestamp='',epoch=999):
 
         if pre_trained == True:
             print('Loading Pre-trained Model...')
@@ -428,11 +430,9 @@ class sysmGAN(object):
                 print('Best Timestamp not provided. Abort !')
                 checkpoint_dir = ''
             else:
-                checkpoint_dir = 'checkpoint/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,
-                                                                            self.y_dim, self.alpha, self.beta)
+                checkpoint_dir = 'checkpoint/{}/{}'.format(self.data, timestamp)
 
-
-        self.saver.restore(self.sess, os.path.join(checkpoint_dir, 'model.ckpt'))
+        self.saver.restore(self.sess, os.path.join(checkpoint_dir, 'model.ckpt-%d'%epoch))
         print('Restored model weights.')
 
 if __name__ == '__main__':
@@ -475,16 +475,16 @@ if __name__ == '__main__':
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
     ################ gaussian mixture with 4 components############
-    mean = 0.75*np.array([[1, 1],[-1, 1],[1, -1],[-1, -1]])
-    sd = 0.05
-    cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
-    cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    cov2 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    cov3 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    cov4 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    cov = np.array([cov1,cov2,cov3,cov4])
-    weights = [0.25,0.25,0.25,0.25]
-    ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
+    # mean = 0.75*np.array([[1, 1],[-1, 1],[1, -1],[-1, -1]])
+    # sd = 0.05
+    # cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
+    # cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    # cov2 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    # cov3 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    # cov4 = np.array([[0.05**2, 0],[0, 0.05**2]])
+    # cov = np.array([cov1,cov2,cov3,cov4])
+    # weights = [0.25,0.25,0.25,0.25]
+    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
     ################ gaussian mixture with 8-10 components forming a circle############
     # n_components = 8
@@ -502,7 +502,7 @@ if __name__ == '__main__':
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
 
     ################ swiss roll##############
-    #ys = util.Swiss_roll_sampler(N=20000)
+    ys = util.Swiss_roll_sampler(N=20000)
 
     ################ gaussian mixture plus normal plus uniform############
     # mean = np.array([[0.25, 0.25, 0.25],[0.75, 0.75, 0.75]])
@@ -527,8 +527,8 @@ if __name__ == '__main__':
             cl_gan.load(pre_trained=True)
             timestamp = 'pre-trained'
         else:
-            cl_gan.load(pre_trained=False, timestamp = timestamp)
-            cl_gan.estimate_fy_with_IS(999)
+            cl_gan.load(pre_trained=False, timestamp = timestamp, epoch = 999)
+            cl_gan.estimate_fy_with_IS_v2(999)
             sys.exit()
             grid_axis1 = np.linspace(-5,5,200)#axis-dim1
             grid_axis2 = np.linspace(-5,5,200)#axis-dim2
