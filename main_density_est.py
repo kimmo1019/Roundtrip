@@ -155,7 +155,10 @@ class sysmGAN(object):
         # if not os.path.exists(graph_dir):
         #     os.makedirs(graph_dir)
         # self.summary_writer=tf.summary.FileWriter(graph_dir,graph=tf.get_default_graph())
-
+        save_dir = 'data/density_est/density_est_{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        self.save_dir = save_dir
         self.saver = tf.train.Saver()
 
         run_config = tf.ConfigProto()
@@ -163,7 +166,7 @@ class sysmGAN(object):
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
 
-    def train(self, epochs=3000):
+    def train(self, epochs=2000):
         #data_x, label_x = self.x_sampler.load_all()
         data_y, label_y = self.y_sampler.load_all()
         #data_x = np.array(data_x,dtype='float32')
@@ -213,12 +216,12 @@ class sysmGAN(object):
                 
                 # summary = self.sess.run(self.merged_summary,feed_dict={self.x:bx,self.y:by})
                 # self.summary_writer.add_summary(summary, counter)
-            if (epoch+1) % 200 == 0:
+            if (epoch+1) % 100 == 0:
                 self.evaluate(epoch)
                 #self.density_est(epoch)
                 self.save(epoch)
-            if (epoch+1) % 1000==0:
-                self.estimate_fy_with_IS_v2(epoch)#density estimation with importance sampling
+            if (epoch+1) % 500 == 0:
+                self.estimate_fy_with_IS_v3(epoch)#density estimation with importance sampling
 
     #predict with y_=G(x)
     def predict_y(self, x, bs=512):
@@ -254,6 +257,7 @@ class sysmGAN(object):
 
     
     def estimate_fy_with_IS(self,epoch,sd_q=1,n=200,interval_len=10,sample_size=5000):
+        #importace sampling with normal distribution (2 dimension)
         import matplotlib
         matplotlib.use('agg')
         import matplotlib.pyplot as plt
@@ -290,7 +294,8 @@ class sysmGAN(object):
         plt.savefig('density_y_at_epoch%d_%.2f.png'%(epoch,time.time()-t))
         plt.close()
 
-    def estimate_fy_with_IS_v2(self,epoch,degree=100000,n=200,interval_len=10,sample_size=5000):#using student t distribution
+    def estimate_fy_with_IS_v2(self,epoch,degree=1,n=200,interval_len=10,sample_size=5000):#using student t distribution
+        #importace sampling with t-distribution (2 dimension)
         sd_q = 1
         from scipy.stats import t
         import matplotlib
@@ -298,7 +303,7 @@ class sysmGAN(object):
         import matplotlib.pyplot as plt
         def f(x_batch,sd_y=0.1):
             return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
-        def w(x,x_y,degree=100000):
+        def w(x,x_y,degree=1):
             #q_x = 1. / ((np.sqrt(2 * np.pi)*sd_q)**self.x_dim) * np.exp(-np.sum((x-x_y)**2,axis=1)/(2*sd_q**2))
             t_pdf = t.pdf(x-x_y,degree) #shape sample_size * x_dim
             q_x = np.prod(t_pdf,axis=1)
@@ -331,6 +336,46 @@ class sysmGAN(object):
         plt.savefig('density_y_at_epoch%d_%s.png'%(epoch,self.timestamp))
         plt.close()
 
+
+    def estimate_fy_with_IS_v3(self,epoch,degree=1,n=200,interval_len=2,sample_size=5000):#using student t distribution
+        #importace sampling with t-distribution (any dimension)
+        t0=time.time()
+        sd_q = 1
+        from scipy.stats import t
+        import matplotlib
+        matplotlib.use('agg')
+        import matplotlib.pyplot as plt
+        def f(x_batch,sd_y=0.1):
+            return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
+        def w(x,x_y,degree=1):
+            #q_x = 1. / ((np.sqrt(2 * np.pi)*sd_q)**self.x_dim) * np.exp(-np.sum((x-x_y)**2,axis=1)/(2*sd_q**2))
+            t_pdf = t.pdf(x-x_y,degree) #shape sample_size * x_dim
+            q_x = np.prod(t_pdf,axis=1)
+            p_x = 1. / ((np.sqrt(2 * np.pi))**self.x_dim) * np.exp(-np.sum(x**2,axis=1)/2) #length=sample_size
+            return p_x/q_x
+
+        linspace_list = [np.linspace(-interval_len/2,interval_len/2,n) for _ in range(self.y_dim)]
+        mesh_grids_list = np.meshgrid(*linspace_list)
+        y_points = np.vstack([item.ravel() for item in mesh_grids_list]).T
+        x_points_pred = self.predict_x(y_points)
+        
+        x_samples_list = [np.hstack([t.rvs(degree, loc=item, scale=1, size=(sample_size,1)) for item in each]) for each in x_points_pred]
+        g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
+        #y-G(x)
+        mu_samples_list = map(lambda x: x[0]-x[1], zip(y_points, g_x_samples_list))
+        f_return_list = map(f,mu_samples_list)
+        w_return_list = map(w,x_samples_list,x_points_pred)
+        fy_list = map(lambda x, y: x*y,f_return_list,w_return_list)
+        fy_est = np.array([np.mean(item) for item in fy_list])
+        fy_est = fy_est.reshape(tuple([n]*self.y_dim))
+        print time.time()-t0
+        np.save('%s/py_est_at_epoch%d_%.2f.npy'%(self.save_dir,epoch,time.time()-t0),fy_est)
+        # plt.figure()
+        # plt.pcolormesh(v1,v2,fy_est,cmap='coolwarm')
+        # plt.colorbar()
+        # plt.savefig('density_y_at_epoch%d_%s.png'%(epoch,self.timestamp))
+        # plt.close()
+
     def density_est(self,epoch,n=500,bound=5):
         import matplotlib
         matplotlib.use('agg')
@@ -348,9 +393,6 @@ class sysmGAN(object):
             f2_mat = f2_list.reshape((len(f1_mat),-1))
             return f1_mat,f2_mat
         y_list = 0.75*np.array([[-1,1],[-1,0],[-1,-1],[0,1],[0,0],[0,-1],[1,1],[1,0],[1,-1]],dtype='float')
-        save_dir = 'data/density_est/{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
         for i in range(0,len(y_list),3):
             plt.figure(figsize=(12, 10),dpi=100)
             for j in range(i,i+3):
@@ -367,7 +409,7 @@ class sysmGAN(object):
                 plt.pcolormesh(xv1,xv2,f1_mat*f2_mat,cmap='coolwarm')
                 plt.title('y=(%.2f,%.2f)'%(y_list[j][0],y_list[j][1]))
                 plt.colorbar()
-            plt.savefig('%s/map_y1=%d_at_epoch%d'%(save_dir,4*(i/3-1),epoch))
+            plt.savefig('%s/map_y1=%d_at_epoch%d'%(self.save_dir,4*(i/3-1),epoch))
             plt.close()
 
     def evaluate(self,epoch):
@@ -377,11 +419,8 @@ class sysmGAN(object):
         #assert data_x.shape[0] == data_y.shape[0]
         data_x_ = self.predict_x(data_y)
         data_y_ = self.predict_y(data_x)
-        save_dir = 'data/density_est/{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        np.savez('{}/data_at_{}.npz'.format(save_dir, epoch),data_x,data_y,data_x_,data_y_)
-        self.plot_density_2D([data_x,data_y,data_x_,data_y_], '%s/figs'%save_dir, epoch)
+        np.savez('{}/data_at_{}.npz'.format(self.save_dir, epoch),data_x,data_y,data_x_,data_y_)
+        self.plot_density_2D([data_x,data_y,data_x_,data_y_], '%s/figs'%self.save_dir, epoch)
         #sys.exit()
         #calculate KL-divergency of data_x_ and data_x, data_y_ and data_y
 
@@ -486,6 +525,19 @@ if __name__ == '__main__':
     # weights = [0.25,0.25,0.25,0.25]
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
+    ################ gaussian mixture with 8 components in three dimensional space#####
+    # mean = 0.75*np.array([[1,1,1],[-1,1,1],[1,-1,1],[1,1,-1],[-1,-1,1],[-1,1,-1], \
+    #     [1,-1,-1],[-1,-1,-1]])
+    # sd = 0.05
+    # cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
+    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
+    ################ gaussian mixture with 2**n components in n dimensional space#####
+    linspace_list = 0.75*np.array([np.linspace(-1.,1.,2) for _ in range(y_dim)])
+    mesh_grids_list = np.meshgrid(*linspace_list)
+    mean = np.vstack([item.ravel() for item in mesh_grids_list]).T
+    sd = 0.05
+    cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
+    ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
     ################ gaussian mixture with 8-10 components forming a circle############
     # n_components = 8
     # def cal_cov(theta,sx=1,sy=0.4**2):
@@ -502,7 +554,7 @@ if __name__ == '__main__':
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
 
     ################ swiss roll##############
-    ys = util.Swiss_roll_sampler(N=20000)
+    #ys = util.Swiss_roll_sampler(N=20000)
 
     ################ gaussian mixture plus normal plus uniform############
     # mean = np.array([[0.25, 0.25, 0.25],[0.75, 0.75, 0.75]])
