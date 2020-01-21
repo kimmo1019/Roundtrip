@@ -6,7 +6,6 @@ import argparse
 import importlib
 import tensorflow as tf
 import numpy as np
-import copy
 import math
 import metric
 import util
@@ -14,33 +13,8 @@ from functools import reduce
 
 tf.set_random_seed(0)
 
-class ImagePool(object):
-    def __init__(self, maxsize=50):
-        self.maxsize = maxsize
-        self.num_img = 0
-        self.images = []
-
-    def __call__(self, image):
-        if self.maxsize <= 0:
-            return image
-        if self.num_img < self.maxsize:
-            self.images.append(image)
-            self.num_img += 1
-            return image
-        if np.random.rand() > 0.5:
-            idx = int(np.random.rand()*self.maxsize)
-            tmp1 = copy.copy(self.images[idx])[0]
-            self.images[idx][0] = image[0]
-            idx = int(np.random.rand()*self.maxsize)
-            tmp2 = copy.copy(self.images[idx])[1]
-            self.images[idx][1] = image[1]
-            return [tmp1, tmp2]
-        else:
-            return image
-
-
-class sysmGAN(object):
-    def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, batch_size, alpha, beta):
+class RoundtripModel(object):
+    def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, pool, batch_size, alpha, beta):
         self.model = model
         self.data = data
         self.g_net = g_net
@@ -52,7 +26,7 @@ class sysmGAN(object):
         self.batch_size = batch_size
         self.alpha = alpha
         self.beta = beta
-        self.pool = ImagePool()
+        self.pool = pool
         self.use_L1=False# l2 is better than l1
         self.x_dim = self.dx_net.input_dim
         self.y_dim = self.dy_net.input_dim
@@ -89,11 +63,11 @@ class sysmGAN(object):
         #self.g_loss_adv = -tf.reduce_mean(self.dy_)
         #self.h_loss_adv = -tf.reduce_mean(self.dx_)
         #(1-D(x))^2
-        self.g_loss_adv = tf.reduce_mean((tf.ones_like(self.dy_)  - self.dy_)**2)
-        self.h_loss_adv = tf.reduce_mean((tf.ones_like(self.dx_) - self.dx_)**2)
+        #self.g_loss_adv = tf.reduce_mean((tf.ones_like(self.dy_)  - self.dy_)**2)
+        #self.h_loss_adv = tf.reduce_mean((tf.ones_like(self.dx_) - self.dx_)**2)
         #cross_entropy
-        #self.g_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy_, labels=tf.ones_like(self.dy_)))
-        #self.h_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx_, labels=tf.ones_like(self.dx_)))
+        self.g_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy_, labels=tf.ones_like(self.dy_)))
+        self.h_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx_, labels=tf.ones_like(self.dx_)))
         if self.use_L1:
             self.g_loss = self.g_loss_adv + self.alpha*self.l1_loss_x + self.beta*self.l1_loss_y
             self.h_loss = self.h_loss_adv + self.alpha*self.l1_loss_x + self.beta*self.l1_loss_y
@@ -117,10 +91,16 @@ class sysmGAN(object):
         #self.dx_loss = tf.reduce_mean(self.dx_) - tf.reduce_mean(self.dx)
         #self.dy_loss = tf.reduce_mean(self.dy_) - tf.reduce_mean(self.dy)
         #(1-D(x))^2
-        self.dx_loss = (tf.reduce_mean((tf.ones_like(self.dx) - self.dx)**2) \
-                +tf.reduce_mean((tf.zeros_like(self.d_fake_x) - self.d_fake_x)**2))/2.0
-        self.dy_loss = (tf.reduce_mean((tf.ones_like(self.dy) - self.dy)**2) \
-                +tf.reduce_mean((tf.zeros_like(self.d_fake_y) - self.d_fake_y)**2))/2.0
+        # self.dx_loss = (tf.reduce_mean((tf.ones_like(self.dx) - self.dx)**2) \
+        #         +tf.reduce_mean((tf.zeros_like(self.d_fake_x) - self.d_fake_x)**2))/2.0
+        # self.dy_loss = (tf.reduce_mean((tf.ones_like(self.dy) - self.dy)**2) \
+        #         +tf.reduce_mean((tf.zeros_like(self.d_fake_y) - self.d_fake_y)**2))/2.0
+        #log(D(x))
+        self.dx_loss = (tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx, labels=tf.ones_like(self.dx))) \
+                +tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake_x, labels=tf.zeros_like(self.d_fake_x))))/2.0
+        self.dy_loss = (tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy, labels=tf.ones_like(self.dy))) \
+                +tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake_y, labels=tf.zeros_like(self.d_fake_y))))/2.0
+
         self.d_loss = self.dx_loss + self.dy_loss
 
         self.clip_dx = [var.assign(tf.clip_by_value(var, -0.01, 0.01)) for var in self.dx_net.vars]
@@ -155,7 +135,7 @@ class sysmGAN(object):
         # if not os.path.exists(graph_dir):
         #     os.makedirs(graph_dir)
         # self.summary_writer=tf.summary.FileWriter(graph_dir,graph=tf.get_default_graph())
-        save_dir = 'data/density_est/density_est_{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
+        save_dir = 'data/density_est/density_est_{}_{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta, sd_y)
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         self.save_dir = save_dir
@@ -371,7 +351,7 @@ class sysmGAN(object):
         fy_est = np.array([np.mean(item) for item in fy_list])
         #fy_est = fy_est.reshape(tuple([n]*self.y_dim))
         print time.time()-t0
-        np.savez('%s/py_est_at_epoch%d_%.2f.npz'%(self.save_dir,epoch,time.time()-t0),fy_est,self.y_sampler.mean,self.y_sampler.sd)
+        np.savez('%s/py_est_at_epoch%d_%.2f.npz'%(self.save_dir,epoch,time.time()-t0),fy_est,self.y_sampler.mean,self.y_sampler.sd, y_points)
         # plt.figure()
         # plt.pcolormesh(v1,v2,fy_est,cmap='coolwarm')
         # plt.colorbar()
@@ -509,6 +489,8 @@ if __name__ == '__main__':
     #xs = util.X_sampler(N=10000, dim=x_dim, mean=3.0)
     #ys = util.Gaussian_sampler(N=10000,mean=np.zeros(y_dim),sd=1.0)
     ys = util.GMM_sampler(N=10000,n_components=5,dim=y_dim,sd=0.5)
+
+    pool = util.DataPool()
     ################ gaussian mixture with 2 components############
     # mean = np.array([[0.25, 0.25],[0.75, 0.75]])
     # cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
@@ -568,43 +550,19 @@ if __name__ == '__main__':
     # weights = [0.5,0.5]
     # ys = util.GMM_Uni_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
-    
-
-
-
-    cl_gan = sysmGAN(g_net, h_net, dx_net, dy_net, xs, ys, batch_size, alpha, beta)
+    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, pool, batch_size, alpha, beta)
 
     if args.train == 'True':
-        cl_gan.train()
+        RTM.train()
     else:
 
         print('Attempting to Restore Model ...')
         if timestamp == '':
-            cl_gan.load(pre_trained=True)
+            RTM.load(pre_trained=True)
             timestamp = 'pre-trained'
         else:
-            cl_gan.load(pre_trained=False, timestamp = timestamp, epoch = 999)
-            cl_gan.estimate_fy_with_IS_v2(999)
-            sys.exit()
-            grid_axis1 = np.linspace(-5,5,200)#axis-dim1
-            grid_axis2 = np.linspace(-5,5,200)#axis-dim2
-            xv1,xv2 = np.meshgrid(grid_axis1,grid_axis2)
-            data = np.vstack((xv1.ravel(),xv2.ravel())).T
-            #data_x = xs.get_batch(300000)
-            data_y_ = cl_gan.predict_y(data)
-            data_x_ = cl_gan.predict_x(data)
-            np.savez('data.npz',data,data_x_)
-            import matplotlib
-            matplotlib.use('agg')
-            import matplotlib.pyplot as plt 
-            plt.figure()
-            plt.hist2d(data_x_[:,0],data_x_[:,1],bins=8000)
-            plt.colorbar()
-            plt.xlim(-3,3)
-            plt.ylim(-3,3)
-            plt.savefig('test_x2.png')
-            plt.close()
-            #cl_gan.estimate_fy_with_IS(999)
+            RTM.load(pre_trained=False, timestamp = timestamp, epoch = 999)
+            RTM.estimate_fy_with_IS_v3(999)
 
 
     
