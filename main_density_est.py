@@ -166,7 +166,7 @@ class sysmGAN(object):
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
 
-    def train(self, epochs=2000):
+    def train(self, epochs=3000):
         #data_x, label_x = self.x_sampler.load_all()
         data_y, label_y = self.y_sampler.load_all()
         #data_x = np.array(data_x,dtype='float32')
@@ -339,24 +339,26 @@ class sysmGAN(object):
 
     def estimate_fy_with_IS_v3(self,epoch,degree=1,n=200,interval_len=2,sample_size=5000):#using student t distribution
         #importace sampling with t-distribution (any dimension)
+        # if y_dim=2, then, estimate the whole plane, else estimate data points sampled from real y distribution
         t0=time.time()
         sd_q = 1
         from scipy.stats import t
         import matplotlib
         matplotlib.use('agg')
         import matplotlib.pyplot as plt
-        def f(x_batch,sd_y=0.1):
+        def f(x_batch):
             return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
         def w(x,x_y,degree=1):
-            #q_x = 1. / ((np.sqrt(2 * np.pi)*sd_q)**self.x_dim) * np.exp(-np.sum((x-x_y)**2,axis=1)/(2*sd_q**2))
             t_pdf = t.pdf(x-x_y,degree) #shape sample_size * x_dim
             q_x = np.prod(t_pdf,axis=1)
             p_x = 1. / ((np.sqrt(2 * np.pi))**self.x_dim) * np.exp(-np.sum(x**2,axis=1)/2) #length=sample_size
             return p_x/q_x
-
-        linspace_list = [np.linspace(-interval_len/2,interval_len/2,n) for _ in range(self.y_dim)]
-        mesh_grids_list = np.meshgrid(*linspace_list)
-        y_points = np.vstack([item.ravel() for item in mesh_grids_list]).T
+        if self.y_dim == 2:
+            linspace_list = [np.linspace(-interval_len/2,interval_len/2,n) for _ in range(self.y_dim)]
+            mesh_grids_list = np.meshgrid(*linspace_list)
+            y_points = np.vstack([item.ravel() for item in mesh_grids_list]).T
+        else:
+            y_points, _ = self.y_sampler.load_all()
         x_points_pred = self.predict_x(y_points)
         
         x_samples_list = [np.hstack([t.rvs(degree, loc=item, scale=1, size=(sample_size,1)) for item in each]) for each in x_points_pred]
@@ -367,9 +369,9 @@ class sysmGAN(object):
         w_return_list = map(w,x_samples_list,x_points_pred)
         fy_list = map(lambda x, y: x*y,f_return_list,w_return_list)
         fy_est = np.array([np.mean(item) for item in fy_list])
-        fy_est = fy_est.reshape(tuple([n]*self.y_dim))
+        #fy_est = fy_est.reshape(tuple([n]*self.y_dim))
         print time.time()-t0
-        np.save('%s/py_est_at_epoch%d_%.2f.npy'%(self.save_dir,epoch,time.time()-t0),fy_est)
+        np.savez('%s/py_est_at_epoch%d_%.2f.npz'%(self.save_dir,epoch,time.time()-t0),fy_est,self.y_sampler.mean,self.y_sampler.sd)
         # plt.figure()
         # plt.pcolormesh(v1,v2,fy_est,cmap='coolwarm')
         # plt.colorbar()
@@ -483,6 +485,7 @@ if __name__ == '__main__':
     parser.add_argument('--bs', type=int, default=64)
     parser.add_argument('--alpha', type=float, default=10.0)
     parser.add_argument('--beta', type=float, default=10.0)
+    parser.add_argument('--sd_y', type=float, default=0.5,help='standard deviation for density estimation')
     parser.add_argument('--timestamp', type=str, default='')
     parser.add_argument('--train', type=str, default='False')
     args = parser.parse_args()
@@ -493,6 +496,7 @@ if __name__ == '__main__':
     batch_size = args.bs
     alpha = args.alpha
     beta = args.beta
+    sd_y = args.sd_y
     timestamp = args.timestamp
 
     g_net = model.Generator(input_dim=x_dim,output_dim = y_dim,name='g_net')
@@ -504,7 +508,7 @@ if __name__ == '__main__':
     xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
     #xs = util.X_sampler(N=10000, dim=x_dim, mean=3.0)
     #ys = util.Gaussian_sampler(N=10000,mean=np.zeros(y_dim),sd=1.0)
-
+    ys = util.GMM_sampler(N=10000,n_components=5,dim=y_dim,sd=0.5)
     ################ gaussian mixture with 2 components############
     # mean = np.array([[0.25, 0.25],[0.75, 0.75]])
     # cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
@@ -532,12 +536,12 @@ if __name__ == '__main__':
     # cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
     ################ gaussian mixture with 2**n components in n dimensional space#####
-    linspace_list = 0.75*np.array([np.linspace(-1.,1.,2) for _ in range(y_dim)])
-    mesh_grids_list = np.meshgrid(*linspace_list)
-    mean = np.vstack([item.ravel() for item in mesh_grids_list]).T
-    sd = 0.05
-    cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
-    ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
+    # linspace_list = 0.75*np.array([np.linspace(-1.,1.,2) for _ in range(y_dim)])
+    # mesh_grids_list = np.meshgrid(*linspace_list)
+    # mean = np.vstack([item.ravel() for item in mesh_grids_list]).T
+    # sd = 0.05
+    # cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
+    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
     ################ gaussian mixture with 8-10 components forming a circle############
     # n_components = 8
     # def cal_cov(theta,sx=1,sy=0.4**2):
