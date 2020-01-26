@@ -14,7 +14,7 @@ from functools import reduce
 tf.set_random_seed(0)
 
 class RoundtripModel(object):
-    def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, pool, batch_size, alpha, beta):
+    def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, pool, batch_size, alpha, beta, sd_y, df, scale):
         self.model = model
         self.data = data
         self.g_net = g_net
@@ -27,6 +27,9 @@ class RoundtripModel(object):
         self.alpha = alpha
         self.beta = beta
         self.pool = pool
+        self.sd_y = sd_y
+        self.df = df
+        self.scale = scale
         self.use_L1=False# l2 is better than l1
         self.x_dim = self.dx_net.input_dim
         self.y_dim = self.dy_net.input_dim
@@ -63,11 +66,11 @@ class RoundtripModel(object):
         #self.g_loss_adv = -tf.reduce_mean(self.dy_)
         #self.h_loss_adv = -tf.reduce_mean(self.dx_)
         #(1-D(x))^2
-        #self.g_loss_adv = tf.reduce_mean((tf.ones_like(self.dy_)  - self.dy_)**2)
-        #self.h_loss_adv = tf.reduce_mean((tf.ones_like(self.dx_) - self.dx_)**2)
+        self.g_loss_adv = tf.reduce_mean((tf.ones_like(self.dy_)  - self.dy_)**2)
+        self.h_loss_adv = tf.reduce_mean((tf.ones_like(self.dx_) - self.dx_)**2)
         #cross_entropy
-        self.g_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy_, labels=tf.ones_like(self.dy_)))
-        self.h_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx_, labels=tf.ones_like(self.dx_)))
+        #self.g_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy_, labels=tf.ones_like(self.dy_)))
+        #self.h_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx_, labels=tf.ones_like(self.dx_)))
         if self.use_L1:
             self.g_loss = self.g_loss_adv + self.alpha*self.l1_loss_x + self.beta*self.l1_loss_y
             self.h_loss = self.h_loss_adv + self.alpha*self.l1_loss_x + self.beta*self.l1_loss_y
@@ -91,15 +94,15 @@ class RoundtripModel(object):
         #self.dx_loss = tf.reduce_mean(self.dx_) - tf.reduce_mean(self.dx)
         #self.dy_loss = tf.reduce_mean(self.dy_) - tf.reduce_mean(self.dy)
         #(1-D(x))^2
-        # self.dx_loss = (tf.reduce_mean((tf.ones_like(self.dx) - self.dx)**2) \
-        #         +tf.reduce_mean((tf.zeros_like(self.d_fake_x) - self.d_fake_x)**2))/2.0
-        # self.dy_loss = (tf.reduce_mean((tf.ones_like(self.dy) - self.dy)**2) \
-        #         +tf.reduce_mean((tf.zeros_like(self.d_fake_y) - self.d_fake_y)**2))/2.0
+        self.dx_loss = (tf.reduce_mean((tf.ones_like(self.dx) - self.dx)**2) \
+                +tf.reduce_mean((tf.zeros_like(self.d_fake_x) - self.d_fake_x)**2))/2.0
+        self.dy_loss = (tf.reduce_mean((tf.ones_like(self.dy) - self.dy)**2) \
+                +tf.reduce_mean((tf.zeros_like(self.d_fake_y) - self.d_fake_y)**2))/2.0
         #log(D(x))
-        self.dx_loss = (tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx, labels=tf.ones_like(self.dx))) \
-                +tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake_x, labels=tf.zeros_like(self.d_fake_x))))/2.0
-        self.dy_loss = (tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy, labels=tf.ones_like(self.dy))) \
-                +tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake_y, labels=tf.zeros_like(self.d_fake_y))))/2.0
+        # self.dx_loss = (tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx, labels=tf.ones_like(self.dx))) \
+        #         +tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake_x, labels=tf.zeros_like(self.d_fake_x))))/2.0
+        # self.dy_loss = (tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy, labels=tf.ones_like(self.dy))) \
+        #         +tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake_y, labels=tf.zeros_like(self.d_fake_y))))/2.0
 
         self.d_loss = self.dx_loss + self.dy_loss
 
@@ -135,7 +138,7 @@ class RoundtripModel(object):
         # if not os.path.exists(graph_dir):
         #     os.makedirs(graph_dir)
         # self.summary_writer=tf.summary.FileWriter(graph_dir,graph=tf.get_default_graph())
-        save_dir = 'data/density_est/density_est_{}_{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta, sd_y)
+        save_dir = 'data/density_est/density_est_{}_x_dim={}_y_dim={}_alpha={}_beta={}_sd={}_df={}_scale={}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta, self.sd_y, self.df, self.scale)
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         self.save_dir = save_dir
@@ -158,7 +161,7 @@ class RoundtripModel(object):
         for epoch in range(epochs):
             #np.random.shuffle(data_x)
             np.random.shuffle(data_y)
-            lr = 1e-4 #if epoch < epochs/2 else 2e-4*(epochs-epoch)/(epochs-epochs/2)
+            lr = 2e-4 if epoch < epochs/2 else 2e-4*float(epochs-epoch)/float(epochs-epochs/2)
             batch_idxs = len(data_y) // batch_size
             #lr decay, add later
             for idx in range(batch_idxs):
@@ -178,36 +181,39 @@ class RoundtripModel(object):
                     bx = self.x_sampler.train(batch_size)
                     by = self.y_sampler.train(batch_size)
 
-                    g_loss_adv, h_loss_adv, l1_loss_x, l1_loss_y, g_loss, \
+                    g_loss_adv, h_loss_adv, l2_loss_x, l2_loss_y, g_loss, \
                         h_loss, g_h_loss, fake_bx, fake_by = self.sess.run(
-                        [self.g_loss_adv, self.h_loss_adv, self.l1_loss_x, self.l1_loss_y, \
+                        [self.g_loss_adv, self.h_loss_adv, self.l2_loss_x, self.l2_loss_y, \
                         self.g_loss, self.h_loss, self.g_h_loss, self.x_, self.y_],
                         feed_dict={self.x: bx, self.y: by}
                     )
                     dx_loss, dy_loss, d_loss = self.sess.run([self.dx_loss, self.dy_loss, self.d_loss], \
                         feed_dict={self.x: bx, self.y: by, self.fake_x: fake_bx, self.fake_y: fake_by})
 
-                    print('Iter [%8d] Time [%5.4f] g_loss_adv [%.4f] h_loss_adv [%.4f] l1_loss_x [%.4f] \
-                        l1_loss_y [%.4f] g_loss [%.4f] h_loss [%.4f] g_h_loss [%.4f] dx_loss [%.4f] \
+                    print('Iter [%8d] Time [%5.4f] g_loss_adv [%.4f] h_loss_adv [%.4f] l2_loss_x [%.4f] \
+                        l2_loss_y [%.4f] g_loss [%.4f] h_loss [%.4f] g_h_loss [%.4f] dx_loss [%.4f] \
                         dy_loss [%.4f] d_loss [%.4f]' %
-                        (counter, time.time() - start_time, g_loss_adv, h_loss_adv, l1_loss_x, l1_loss_y, \
+                        (counter, time.time() - start_time, g_loss_adv, h_loss_adv, l2_loss_x, l2_loss_y, \
                         g_loss, h_loss, g_h_loss, dx_loss, dy_loss, d_loss))                 
                 counter+=1
                 
                 # summary = self.sess.run(self.merged_summary,feed_dict={self.x:bx,self.y:by})
                 # self.summary_writer.add_summary(summary, counter)
-            if (epoch+1) % 100 == 0:
-                self.evaluate(epoch)
-                #self.density_est(epoch)
-                self.save(epoch)
+
             if (epoch+1) % 500 == 0:
-                self.estimate_fy_with_IS_v3(epoch)#density estimation with importance sampling
+                self.evaluate(epoch)
+                y_mean = self.y_sampler.mean
+                y_idx = np.random.choice(y_mean.shape[0], size=1000, replace=True)
+                y_val = np.array([np.random.normal(y_mean[i],scale=0.5) for i in y_idx],dtype='float64')
+                py_est = self.estimate_py_with_IS(y_val,epoch,sd_y=self.sd_y,sample_size=30000)
+                #save model weights
+                self.save(epoch)
 
     #predict with y_=G(x)
-    def predict_y(self, x, bs=512):
+    def predict_y(self, x, bs=64):
         assert x.shape[-1] == self.x_dim
         N = x.shape[0]
-        y_pred = np.zeros(shape=(N, self.x_dim)) 
+        y_pred = np.zeros(shape=(N, self.y_dim)) 
         for b in range(int(np.ceil(N*1.0 / bs))):
 
             if (b+1)*bs > N:
@@ -220,10 +226,10 @@ class RoundtripModel(object):
         return y_pred
     
     #predict with x_=H(y)
-    def predict_x(self,y,bs=512):
+    def predict_x(self,y,bs=64):
         assert y.shape[-1] == self.y_dim
         N = y.shape[0]
-        x_pred = np.zeros(shape=(N, self.y_dim)) 
+        x_pred = np.zeros(shape=(N, self.x_dim)) 
         for b in range(int(np.ceil(N*1.0 / bs))):
 
             if (b+1)*bs > N:
@@ -235,176 +241,63 @@ class RoundtripModel(object):
             x_pred[ind, :] = batch_x_
         return x_pred
 
-    
-    def estimate_fy_with_IS(self,epoch,sd_q=1,n=200,interval_len=10,sample_size=5000):
-        #importace sampling with normal distribution (2 dimension)
-        import matplotlib
-        matplotlib.use('agg')
-        import matplotlib.pyplot as plt
-        def f(x_batch,sd_y=0.1):
-            return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
-        def w(x,x_y,sd_q=1):
-            mu1 = np.sum((x-x_y)**2,axis=1) #length=sample_size
-            #mu1 = np.sum(x**2,axis=1)
-            mu2 = np.sum(x**2,axis=1) 
-            return (sd_q**self.x_dim)*np.exp(mu1/(2*sd_q**2)-mu2/2)
-        grid_axis1 = np.linspace(-interval_len/2,interval_len/2,n)
-        grid_axis2 = np.linspace(-interval_len/2,interval_len/2,n)
-        v1,v2 = np.meshgrid(grid_axis1,grid_axis2)
-        y_points = np.vstack((v1.ravel(),v2.ravel())).T#shape (N,2)
-        x_points_pred = self.predict_x(y_points)
-        #x_points_pred = np.zeros((n**2,self.x_dim))
-        x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
-        #x_samples_list = [np.random.normal(0, 1,(sample_size,self.x_dim)) for each in x_points_pred]
-        g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
-        #np.save('pre.npy',g_x_samples_list[0])
-        #g_x_samples_list = [np.zeros((sample_size,self.y_dim)) for each in x_samples_list]
-        #y-G(x)
-        mu_samples_list = map(lambda x: x[0]-x[1], zip(y_points, g_x_samples_list))
-        f_return_list = map(f,mu_samples_list)
-        w_return_list = map(w,x_samples_list,x_points_pred)
-        fy_list = map(lambda x, y: x*y,f_return_list,w_return_list)
-        fy_est = np.array([np.mean(item) for item in fy_list])
-        #fy_est = np.array([np.mean(item) for item in f_return_list])
-        fy_est = fy_est.reshape((n,n))
-        #(time.time()-t)
-        plt.figure()
-        plt.pcolormesh(v1,v2,fy_est,cmap='coolwarm')
-        plt.colorbar()
-        plt.savefig('density_y_at_epoch%d_%.2f.png'%(epoch,time.time()-t))
-        plt.close()
-
-    def estimate_fy_with_IS_v2(self,epoch,degree=1,n=200,interval_len=10,sample_size=5000):#using student t distribution
-        #importace sampling with t-distribution (2 dimension)
-        sd_q = 1
+    #estimate pdf of y (e.g., p(y)) with importance sampling
+    #parallel with each y_point
+    def estimate_py_with_IS(self,y_points,epoch,sd_y=0.5,sample_size=30000,save=True):
         from scipy.stats import t
-        import matplotlib
-        matplotlib.use('agg')
-        import matplotlib.pyplot as plt
-        def f(x_batch,sd_y=0.1):
-            return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
-        def w(x,x_y,degree=1):
-            #q_x = 1. / ((np.sqrt(2 * np.pi)*sd_q)**self.x_dim) * np.exp(-np.sum((x-x_y)**2,axis=1)/(2*sd_q**2))
-            t_pdf = t.pdf(x-x_y,degree) #shape sample_size * x_dim
-            q_x = np.prod(t_pdf,axis=1)
-            p_x = 1. / ((np.sqrt(2 * np.pi))**self.x_dim) * np.exp(-np.sum(x**2,axis=1)/2) #length=sample_size
-            return p_x/q_x
-        grid_axis1 = np.linspace(-interval_len/2,interval_len/2,n)
-        grid_axis2 = np.linspace(-interval_len/2,interval_len/2,n)
-        v1,v2 = np.meshgrid(grid_axis1,grid_axis2)
-        y_points = np.vstack((v1.ravel(),v2.ravel())).T#shape (N,2)
-        x_points_pred = self.predict_x(y_points)
-        #x_points_pred = np.zeros((n**2,self.x_dim))
-        
-        #x_samples_list = [np.random.normal(each, sd_q,(sample_size,self.x_dim)) for each in x_points_pred]
-        x_samples_list = [np.hstack([t.rvs(degree, loc=item, scale=1, size=(sample_size,1)) for item in each]) for each in x_points_pred]
-        g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
-        #np.save('pre.npy',g_x_samples_list[0])
-        #g_x_samples_list = [np.zeros((sample_size,self.y_dim)) for each in x_samples_list]
-        #y-G(x)
-        mu_samples_list = map(lambda x: x[0]-x[1], zip(y_points, g_x_samples_list))
-        f_return_list = map(f,mu_samples_list)
-        w_return_list = map(w,x_samples_list,x_points_pred)
-        fy_list = map(lambda x, y: x*y,f_return_list,w_return_list)
-        fy_est = np.array([np.mean(item) for item in fy_list])
-        #fy_est = np.array([np.mean(item) for item in f_return_list])
-        fy_est = fy_est.reshape((n,n))
-        #(time.time()-t)
-        plt.figure()
-        plt.pcolormesh(v1,v2,fy_est,cmap='coolwarm')
-        plt.colorbar()
-        plt.savefig('density_y_at_epoch%d_%s.png'%(epoch,self.timestamp))
-        plt.close()
-
-
-    def estimate_fy_with_IS_v3(self,epoch,degree=1,n=200,interval_len=2,sample_size=5000):#using student t distribution
-        #importace sampling with t-distribution (any dimension)
-        # if y_dim=2, then, estimate the whole plane, else estimate data points sampled from real y distribution
+        from multiprocessing.dummy import Pool as ThreadPool
         t0=time.time()
-        sd_q = 1
-        from scipy.stats import t
-        import matplotlib
-        matplotlib.use('agg')
-        import matplotlib.pyplot as plt
-        def f(x_batch):
-            return 1. / ((np.sqrt(2 * np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum(x_batch**2,axis=1))/(2*sd_y**2))
-        def w(x,x_y,degree=1):
-            t_pdf = t.pdf(x-x_y,degree) #shape sample_size * x_dim
-            q_x = np.prod(t_pdf,axis=1)
-            p_x = 1. / ((np.sqrt(2 * np.pi))**self.x_dim) * np.exp(-np.sum(x**2,axis=1)/2) #length=sample_size
-            return p_x/q_x
-        if self.y_dim == 2:
-            linspace_list = [np.linspace(-interval_len/2,interval_len/2,n) for _ in range(self.y_dim)]
-            mesh_grids_list = np.meshgrid(*linspace_list)
-            y_points = np.vstack([item.ravel() for item in mesh_grids_list]).T
-        else:
-            y_points, _ = self.y_sampler.load_all()
-        x_points_pred = self.predict_x(y_points)
-        
-        x_samples_list = [np.hstack([t.rvs(degree, loc=item, scale=1, size=(sample_size,1)) for item in each]) for each in x_points_pred]
-        g_x_samples_list = [self.predict_y(each) for each in x_samples_list]
-        #y-G(x)
-        mu_samples_list = map(lambda x: x[0]-x[1], zip(y_points, g_x_samples_list))
-        f_return_list = map(f,mu_samples_list)
-        w_return_list = map(w,x_samples_list,x_points_pred)
-        fy_list = map(lambda x, y: x*y,f_return_list,w_return_list)
-        fy_est = np.array([np.mean(item) for item in fy_list])
-        #fy_est = fy_est.reshape(tuple([n]*self.y_dim))
-        print time.time()-t0
-        np.savez('%s/py_est_at_epoch%d_%.2f.npz'%(self.save_dir,epoch,time.time()-t0),fy_est,self.y_sampler.mean,self.y_sampler.sd, y_points)
-        # plt.figure()
-        # plt.pcolormesh(v1,v2,fy_est,cmap='coolwarm')
-        # plt.colorbar()
-        # plt.savefig('density_y_at_epoch%d_%s.png'%(epoch,self.timestamp))
-        # plt.close()
+        x_points_ = self.predict_x(y_points)
+        x_points_sample_list = [np.hstack([t.rvs(self.df, loc=value, scale=self.scale, size=(sample_size,1), random_state=None) for value in point]) for point in x_points_]
+        y_points_sample_list_ = [self.predict_y(each) for each in x_points_sample_list]
+        #def py_given_x(x_points, y_point):
+        def py_given_x(zip_list):
+            x_points = zip_list[0]
+            y_point = zip_list[1]
+            #calculate p(y|x)
+            #x_points with shape (sample_size, x_dim)
+            #y_point wish shape (y_dim, )
+            y_points_ = self.predict_y(x_points)
+            return 1. / ((np.sqrt(2*np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum((y_point-y_points_)**2,axis=1))/(2.*sd_y**2))
+        #def w_likelihood_ratio(x_point,x_points):
+        def w_likelihood_ratio(zip_list):
+            x_point = zip_list[0]
+            x_points = zip_list[1]
+            #calculate w=px/py
+            #x_point with shape (x_dim, )
+            #x_points with shape (sample_size,x_dim)
+            qx =np.prod(t.pdf(x_point-x_points,self.df,loc=0,scale=self.scale),axis=1)
+            px = 1. / (np.sqrt(2*np.pi)**self.x_dim) * np.exp(-(np.sum((x_points)**2,axis=1))/2.)
+            return px / qx
+        #calculate p(y|x) with multi-process
+        pool = ThreadPool()
+        #py_given_x_list = map(py_given_x, x_points_sample_list, y_points)
+        py_given_x_list = pool.map(py_given_x, zip(x_points_sample_list, y_points))
+        pool.close()
+        pool.join()
+        #calculate w=p(x)/q(x) with multi-process
+        pool = ThreadPool()
+        #w_likelihood_ratio_list = map(w_likelihood_ratio, x_points_, x_points_sample_list)
+        w_likelihood_ratio_list = pool.map(w_likelihood_ratio, zip(x_points_, x_points_sample_list))
+        pool.close()
+        pool.join()
+        #calculate p(y)=int(p(y|x)*p(x)dx)=int(p(y|x)*w(x)q(x)dx)=E(p(y|x)*w(x)) where x~q(x)
+        py_list = map(lambda x, y: x*y,py_given_x_list,w_likelihood_ratio_list)
 
-    def density_est(self,epoch,n=500,bound=5):
-        import matplotlib
-        matplotlib.use('agg')
-        import matplotlib.pyplot as plt
-        grid_axis1 = np.linspace(-bound,bound,n)#axis-dim1
-        grid_axis2 = np.linspace(-bound,bound,n)#axis-dim2
-        N = n**2
-        xv1,xv2 = np.meshgrid(grid_axis1,grid_axis2)
-        grid_x = np.vstack((xv1.ravel(),xv2.ravel())).T
-        grid_y_ = self.predict_y(grid_x)
-        def calculate_product(point_y,xv1,xv2,grid_y_,sd=0.05):
-            f1_mat = 1. / (np.sqrt((2 * np.pi)**self.x_dim)) * np.exp(-(xv1**2+xv2**2) / 2)#with shape n*n
-            l2_norm = np.linalg.norm(point_y-grid_y_,ord=2,axis=1)
-            f2_list = 1. / ((np.sqrt(2 * np.pi)*sd)**self.y_dim) * np.exp(-(l2_norm**2) / (2*sd**2))
-            f2_mat = f2_list.reshape((len(f1_mat),-1))
-            return f1_mat,f2_mat
-        y_list = 0.75*np.array([[-1,1],[-1,0],[-1,-1],[0,1],[0,0],[0,-1],[1,1],[1,0],[1,-1]],dtype='float')
-        for i in range(0,len(y_list),3):
-            plt.figure(figsize=(12, 10),dpi=100)
-            for j in range(i,i+3):
-                f1_mat,f2_mat = calculate_product(y_list[j],xv1,xv2,grid_y_)
-                plt.subplot(3,3,3*(j%3)+1)
-                plt.pcolormesh(xv1,xv2,f1_mat,cmap='coolwarm')
-                plt.title('y=(%.2f,%.2f)'%(y_list[j][0],y_list[j][1]))
-                plt.colorbar()
-                plt.subplot(3,3,3*(j%3)+2)
-                plt.pcolormesh(xv1,xv2,f2_mat,cmap='coolwarm')
-                plt.title('y=(%.2f,%.2f)'%(y_list[j][0],y_list[j][1]))
-                plt.colorbar()
-                plt.subplot(3,3,3*(j%3)+3)
-                plt.pcolormesh(xv1,xv2,f1_mat*f2_mat,cmap='coolwarm')
-                plt.title('y=(%.2f,%.2f)'%(y_list[j][0],y_list[j][1]))
-                plt.colorbar()
-            plt.savefig('%s/map_y1=%d_at_epoch%d'%(self.save_dir,4*(i/3-1),epoch))
-            plt.close()
+        py_est = np.array([np.mean(item) for item in py_list])
+        print('Total time: %.1f s'%(time.time()-t0))
+        if save:
+            np.savez('%s/py_est_at_epoch%d.npz'%(self.save_dir,epoch),py_est,self.y_sampler.mean,self.y_sampler.sd, y_points)
+        return py_est
+
 
     def evaluate(self,epoch):
-        #use all data
         data_x, _ = self.x_sampler.load_all()
         data_y, _ = self.y_sampler.load_all()
-        #assert data_x.shape[0] == data_y.shape[0]
         data_x_ = self.predict_x(data_y)
         data_y_ = self.predict_y(data_x)
         np.savez('{}/data_at_{}.npz'.format(self.save_dir, epoch),data_x,data_y,data_x_,data_y_)
         self.plot_density_2D([data_x,data_y,data_x_,data_y_], '%s/figs'%self.save_dir, epoch)
-        #sys.exit()
-        #calculate KL-divergency of data_x_ and data_x, data_y_ and data_y
 
     def plot_density_2D(self,data,save_dir,epoch,dim1=0,dim2=1):
         import matplotlib
@@ -459,13 +352,15 @@ class RoundtripModel(object):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('')
     parser.add_argument('--data', type=str, default='simutation_data')
-    parser.add_argument('--model', type=str, default='model')
+    parser.add_argument('--model', type=str, default='model_cycle_cluster')
     parser.add_argument('--dx', type=int, default=10)
     parser.add_argument('--dy', type=int, default=10)
     parser.add_argument('--bs', type=int, default=64)
     parser.add_argument('--alpha', type=float, default=10.0)
     parser.add_argument('--beta', type=float, default=10.0)
-    parser.add_argument('--sd_y', type=float, default=0.5,help='standard deviation for density estimation')
+    parser.add_argument('--sd_y', type=float, default=0.5,help='standard deviation in density estimation')
+    parser.add_argument('--df', type=float, default=1,help='degree of freedom of student t distribution')
+    parser.add_argument('--scale', type=float, default=1,help='scale of student t distribution')
     parser.add_argument('--timestamp', type=str, default='')
     parser.add_argument('--train', type=str, default='False')
     args = parser.parse_args()
@@ -477,12 +372,16 @@ if __name__ == '__main__':
     alpha = args.alpha
     beta = args.beta
     sd_y = args.sd_y
+    df = args.df
+    scale = args.scale
     timestamp = args.timestamp
 
-    g_net = model.Generator(input_dim=x_dim,output_dim = y_dim,name='g_net')
-    h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net')
-    dx_net = model.Discriminator(input_dim = x_dim,name='dx_net')
-    dy_net = model.Discriminator(input_dim = y_dim,name='dy_net')
+    #g_net = model.Generator(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=6,nb_units=256)
+    #h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=6,nb_units=256)
+    g_net = model.Generator_resnet(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=10,nb_units=256)
+    h_net = model.Generator_resnet(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=10,nb_units=256)
+    dx_net = model.Discriminator(input_dim = x_dim,name='dx_net',nb_layers=4,nb_units=256)
+    dy_net = model.Discriminator(input_dim = y_dim,name='dy_net',nb_layers=4,nb_units=256)
     #xs = util.Y_sampler(N=10000, n_components=2,dim=y_dim,mean=3.0,sd=0.5)
     #ys = util.Y_sampler(N=10000, n_components=2,dim=x_dim,mean=0.0,sd=1)
     xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
@@ -550,19 +449,40 @@ if __name__ == '__main__':
     # weights = [0.5,0.5]
     # ys = util.GMM_Uni_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
-    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, pool, batch_size, alpha, beta)
+    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, pool, batch_size, alpha, beta, sd_y, df, scale)
 
     if args.train == 'True':
         RTM.train()
     else:
-
         print('Attempting to Restore Model ...')
         if timestamp == '':
             RTM.load(pre_trained=True)
             timestamp = 'pre-trained'
         else:
-            RTM.load(pre_trained=False, timestamp = timestamp, epoch = 999)
-            RTM.estimate_fy_with_IS_v3(999)
+            RTM.load(pre_trained=False, timestamp = timestamp, epoch = 2999)
+            #RTM.estimate_py_with_IS(2999)
+            import matplotlib
+            matplotlib.use('agg')
+            import matplotlib.pyplot as plt
+            t0=time.time()
+            y_mean = ys.mean
+            y_idx = np.random.choice(y_mean.shape[0], size=5000, replace=True)
+            y_val = np.array([np.random.normal(y_mean[i],scale=0.5) for i in y_idx],dtype='float64')
+            mle=[]
+            for sd in np.linspace(0.1,1,19):
+                print sd
+                py_est = RTM.estimate_py_with_IS(y_val,1999,sd_y=sd)
+                sys.exit()
+                mle.append(np.sum(np.log(py_est+1e-100)))
+            print mle
+            plt.plot(np.linspace(0.1,1,19),mle)
+            plt.xlabel('sd')
+            plt.ylabel('log-likelihood')
+            plt.savefig('model_select_at_dim%d.png'%(y_mean.shape[1]))
+            best_sd = np.linspace(0.1,1,19)[mle.index(np.max(mle))]
+            print('%.2f seconds'%(time.time()-t0))
+            print('Best sd for RTM:%.2f'%best_sd)
+            
 
 
     
