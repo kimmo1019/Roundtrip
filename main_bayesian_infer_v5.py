@@ -44,7 +44,7 @@ Step3 - train the extended GAN model GAN((x1,x2),(y1,y2)) where relationship
 ##########################################################################
 
 class RoundtripModel(object):
-    def __init__(self, g_net, h_net, dx_net1, dy_net1,dy_net2, dy_net, x_sampler1, x_sampler2, y_sampler, pool, batch_size, alpha, beta):
+    def __init__(self, g_net, h_net, dx_net1, dy_net1,dy_net2, dy_net, x_sampler1, x_sampler2, y_sampler, pool, batch_size, alpha, beta, epochs):
         self.model = model
         self.data = data
         self.g_net = g_net
@@ -60,6 +60,7 @@ class RoundtripModel(object):
         self.alpha = alpha
         self.beta = beta
         self.pool = pool
+        self.epochs = epochs
         self.x_dim1 = self.g_net.input_dim1
         self.x_dim2 = self.g_net.input_dim2
         self.y_dim1 = self.h_net.input_dim1
@@ -205,17 +206,18 @@ class RoundtripModel(object):
         #y_prior, theta_prior = self.y_sampler.generate_data(sample_size)
         y_prior, theta_prior, _ = self.y_sampler.generate_data3(sample_size, 0, self.y_dim1)
         self.y_true = y_prior[0:1,:]
-        np.savez('%s/theta_prior.npz'%self.save_dir,theta_prior,y_prior)
+        np.savez('%s/stage0_init.npz'%self.save_dir,y_prior,theta_prior)
         data_y1 = y_prior
         data_y2 = theta_prior
-        theta_posterior = self.train(data_y1,data_y2,0,epochs_list=[10,5,2])
+        theta_posterior = self.train(data_y1,data_y2,0,epochs_list=self.epochs)#[5,5,2]
+
         for i in range(1,n_iters):
             y_prior, theta_prior, _ = self.y_sampler.generate_data3(sample_size, i, self.y_dim1, prior=theta_posterior)
             self.y_true = y_prior[0:1,:]
             data_y1 = y_prior
             data_y2 = theta_prior
             self.sess.run(tf.global_variables_initializer())
-            theta_posterior = self.train(data_y1, data_y2, i, epochs_list=[10,5,2])
+            theta_posterior = self.train(data_y1, data_y2, i, epochs_list=self.epochs)
             
     
     def train(self,data_y1,data_y2,iteration,epochs_list):
@@ -271,13 +273,21 @@ class RoundtripModel(object):
                         feed_dict={self.x1: bx1, self.x2: bx2, self.y1: by1,self.y2: by2, self.fake_x1: fake_bx1,self.fake_x2: fake_bx2,\
                              self.fake_y1: fake_by1,self.fake_y2: fake_by2})
 
-                    print('Round [%d] Iter [%d] Time [%5.4f] g_loss_adv1 [%.4f] h_loss_adv1 [%.4f] l2_loss_x1 [%.4f] \
+                    print('Round [%d] Epoch [%d] Iter [%d] Time [%5.4f] g_loss_adv1 [%.4f] h_loss_adv1 [%.4f] l2_loss_x1 [%.4f] \
                         l2_loss_y1 [%.4f] g_loss1 [%.4f] h_loss1 [%.4f] g_h_loss1 [%.4f] dx_loss1 [%.4f] \
                         dy_loss1 [%.4f] d_loss1 [%.4f]' %
-                        (iteration, counter, time.time() - start_time, g_loss_adv1, h_loss_adv1, l2_loss_x1, l2_loss_y1, \
+                        (iteration, epoch, counter, time.time() - start_time, g_loss_adv1, h_loss_adv1, l2_loss_x1, l2_loss_y1, \
                         g_loss1, h_loss1, g_h_loss1, dx_loss1, dy_loss1, d_loss1))                 
                 counter+=1
+            if (epoch+1)%5==0 or epoch+1==epochs:
+                sample_size = data_y2.shape[0]
+                x1 = self.x_sampler1.get_batch(sample_size)
+                x2 = self.x_sampler2.get_batch(sample_size)
+                y1_, y2_ = self.predict_y(x1,x2)
+                np.savez('%s/stage1_RTM_iter%d_epoch%d.npz'%(self.save_dir,iteration,epoch),y1_,y2_)
 
+
+        
         #STAGE 2 pretrain GAN(x2,y2)
         epochs = epochs_list[1]
         for epoch in range(epochs):
@@ -312,16 +322,17 @@ class RoundtripModel(object):
                     g_loss_adv2, dy_loss2 = self.sess.run([self.g_loss_adv2, self.dy_loss2],
                         feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2}
                     )
-                    print('Round [%d] Iter [%d] Time [%.4f] g_loss_adv2 [%.4f] dy_loss2 [%.4f]'%
-                        (iteration, counter, time.time() - start_time, g_loss_adv2, dy_loss2))                 
+                    print('Round [%d] Epoch [%d] Iter [%d] Time [%.4f] g_loss_adv2 [%.4f] dy_loss2 [%.4f]'%
+                        (iteration, epoch, counter, time.time() - start_time, g_loss_adv2, dy_loss2))                 
                 counter+=1
             if (epoch+1)%5==0 or epoch+1==epochs:
                 #save pretrain theta
                 sample_size = data_y2.shape[0]
                 x1 = self.x_sampler1.get_batch(sample_size)
                 x2 = self.x_sampler2.get_batch(sample_size)
-                _, y2_ = self.predict_y(x1,x2)
-                np.save('%s/theta_pretrain_iter%d_epoch%d.npy'%(self.save_dir,iteration,epoch),y2_)
+                y1_, y2_ = self.predict_y(x1,x2)
+                np.savez('%s/stage2_pretrain_iter%d_epoch%d.npz'%(self.save_dir,iteration,epoch),y1_,y2_)
+                
 
 
         #STAGE 3 train GAN((x1,x2),(y1,y2))
@@ -358,8 +369,8 @@ class RoundtripModel(object):
                     g_loss_adv, dy_loss = self.sess.run([self.g_loss_adv, self.dy_loss],
                         feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2}
                     )
-                    print('Round [%d] Iter [%d] Time [%.4f] g_loss_adv [%.4f] dy_loss [%.4f]'%
-                        (iteration, counter, time.time() - start_time, g_loss_adv, dy_loss))       
+                    print('Round [%d] Epoch [%d] Iter [%d] Time [%.4f] g_loss_adv [%.4f] dy_loss [%.4f]'%
+                        (iteration, epoch, counter, time.time() - start_time, g_loss_adv, dy_loss))       
                 counter+=1
 
             if (epoch+1)%2==0 or epoch+1==epochs:
@@ -368,7 +379,7 @@ class RoundtripModel(object):
                 x1 = np.tile(data_x1_[0,:],(sample_size,1))
                 x2 = self.x_sampler2.get_batch(sample_size)
                 _, y2_ = self.predict_y(x1,x2)
-                y2_[:,1] %= np.pi #restrict [0,np.pi]
+                #y2_[:,1] %= np.pi #restrict [0,np.pi]
                 np.save('%s/theta_posterior_iter%d_epoch%d.npy'%(self.save_dir,iteration,epoch),y2_)
         return y2_
  
@@ -486,6 +497,7 @@ if __name__ == '__main__':
     parser.add_argument('--beta', type=float, default=10.0)
     parser.add_argument('--timestamp', type=str, default='')
     parser.add_argument('--train', type=str, default='False')
+    parser.add_argument('--epochs', nargs='+', type=int, help='set epochs for 3 stages')
     args = parser.parse_args()
     data = args.data
     model = importlib.import_module(args.model)
@@ -497,6 +509,8 @@ if __name__ == '__main__':
     alpha = args.alpha
     beta = args.beta
     timestamp = args.timestamp
+    epochs = args.epochs
+
 
     #g_net = model.Generator(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=6,nb_units=256)
     #h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=6,nb_units=256)
@@ -580,7 +594,7 @@ if __name__ == '__main__':
     # weights = [0.5,0.5]
     # ys = util.GMM_Uni_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
-    RTM = RoundtripModel(g_net, h_net, dx_net1, dy_net1, dy_net2, dy_net, xs1, xs2, ys, pool, batch_size, alpha, beta)
+    RTM = RoundtripModel(g_net, h_net, dx_net1, dy_net1, dy_net2, dy_net, xs1, xs2, ys, pool, batch_size, alpha, beta, epochs)
 
     if args.train == 'True':
         RTM.bayesian_iteration()
