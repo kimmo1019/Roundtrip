@@ -1,4 +1,3 @@
-#use cycle gan density estimation framework to do clustering by introducing discrete label
 import os,sys
 import time
 import dateutil.tz
@@ -6,6 +5,7 @@ import datetime
 import argparse
 import importlib
 import tensorflow as tf
+tf.set_random_seed(0)
 import numpy as np
 import copy
 import metric
@@ -13,40 +13,24 @@ import util
 from sklearn.cluster import KMeans
 from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score
 
-tf.set_random_seed(0)
 
-class ImagePool(object):
-    def __init__(self, maxsize=30):
-        self.maxsize = maxsize
-        self.num_img = 0
-        self.images = []
+##########################################################################
 
-    def __call__(self, image):
-        if self.maxsize <= 0:
-            return image
-        if self.num_img < self.maxsize:
-            self.images.append(image)
-            self.num_img += 1
-            return image
-        if np.random.rand() > 0.5:
-            idx = int(np.random.rand()*self.maxsize)
-            tmp1 = copy.copy(self.images[idx])[0]
-            self.images[idx][0] = image[0]
+'''
+Roundtrip model for unsupervised learning, map a Gaussian mixture to the 
+real data needed to be clustered. A discrete distribution will be introduced
+in the x space. 
+    x,y - two data distributions
+    y_  - learned distribution by G(.), namely y_=G(x)
+    x_  - learned distribution by H(.), namely x_=H(y)
+    y__ - reconstructed distribution, y__ = G(H(y))
+    x__ - reconstructed distribution, x__ = H(G(y))
+TODO:adaptively updates the weights in GMM
+'''
+##########################################################################
 
-            idx = int(np.random.rand()*self.maxsize)
-            tmp2 = copy.copy(self.images[idx])[1]
-            self.images[idx][1] = image[1]
-
-            idx = int(np.random.rand()*self.maxsize)
-            tmp3 = copy.copy(self.images[idx])[2]
-            self.images[idx][2] = image[2]
-            return [tmp1, tmp2, tmp3]
-        else:
-            return image
-
-
-class sysmGAN(object):
-    def __init__(self, g_net, h_net, dx_net, dx_net_cat, dy_net, x_sampler, y_sampler, batch_size, nb_classes, alpha, beta):
+class RoundtripModel(object):
+    def __init__(self, g_net, h_net, dx_net, dx_net_cat, dy_net, x_sampler, y_sampler, pool, batch_size, nb_classes, alpha, beta):
         self.model = model
         self.data = data
         self.g_net = g_net
@@ -60,27 +44,18 @@ class sysmGAN(object):
         self.nb_classes = nb_classes
         self.alpha = alpha
         self.beta = beta
-        self.pool = ImagePool()
-        self.use_L1=False
+        self.pool = pool
         self.x_dim = self.dx_net.input_dim
         self.y_dim = self.dy_net.input_dim
         tf.reset_default_graph()
-        ##########################################################################
-        '''
-            x,y - two data distributions
-            y_  - learned distribution by G(.), namely y_=G(x)
-            x_  - learned distribution by H(.), namely x_=H(y)
-            y__ - reconstructed distribution, y__ = G(H(y))
-            x__ - reconstructed distribution, x__ = H(G(y))
-        '''
-        ##########################################################################
+
         self.x = tf.placeholder(tf.float32, [None, self.x_dim], name='x')
         self.x_onehot = tf.placeholder(tf.float32, [None, self.nb_classes], name='x_onehot')
         self.x_combine = tf.concat([self.x,self.x_onehot],axis=1)
 
         self.y = tf.placeholder(tf.float32, [None, self.y_dim], name='y')
 
-        self.y_ = self.g_net(self.x_combine)
+        self.y_ = self.g_net(self.x_combine,reuse=False)
         self.x__, self.x_onehot__, self.x_logits__ = self.h_net(self.y_)
 
         self.x_, self.x_onehot_, self.x_logits_ = self.h_net(self.y)#continuous + softmax + before_softmax
@@ -94,14 +69,13 @@ class sysmGAN(object):
         self.dx_ = self.dx_net(self.x_, reuse=False)
         self.dx_onehot_ = self.dx_net_cat(self.x_onehot_, reuse=False)
 
-        self.l1_loss_x = tf.reduce_mean(tf.abs(self.x - self.x__))
-        self.l1_loss_y = tf.reduce_mean(tf.abs(self.y - self.y__))
+        # self.l1_loss_x = tf.reduce_mean(tf.abs(self.x - self.x__))
+        # self.l1_loss_y = tf.reduce_mean(tf.abs(self.y - self.y__))
 
         self.l2_loss_x = tf.reduce_mean((self.x - self.x__)**2)
         self.l2_loss_y = tf.reduce_mean((self.y - self.y__)**2)
 
         self.CE_loss_x = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=self.x_logits__,labels=self.x_onehot))
-
         #-D(x)
         #self.g_loss_adv = -tf.reduce_mean(self.dy_)
         #self.h_loss_adv = -tf.reduce_mean(self.dx_)
@@ -111,16 +85,12 @@ class sysmGAN(object):
         #cross_entropy
         self.g_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy_, labels=tf.ones_like(self.dy_)))
         self.h_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx_, labels=tf.ones_like(self.dx_)))
-        if self.use_L1:
-            self.g_loss = self.g_loss_adv + self.alpha*(self.CE_loss_x + self.l1_loss_x) + self.beta*self.l1_loss_y
-            self.h_loss = self.h_loss_adv + self.alpha*(self.CE_loss_x + self.l1_loss_x) + self.beta*self.l1_loss_y
-            self.g_h_loss = self.g_loss_adv + self.h_loss_adv + self.alpha*(self.CE_loss_x + self.l1_loss_x) + self.beta*self.l1_loss_y
-        else:
-            self.g_loss = self.g_loss_adv + self.alpha*(self.CE_loss_x + self.l2_loss_x) + self.beta*self.l2_loss_y
-            self.h_loss = self.h_loss_adv + self.alpha*(self.CE_loss_x + self.l2_loss_x) + self.beta*self.l2_loss_y
-            self.g_h_loss = self.g_loss_adv + self.h_loss_adv + self.alpha*(self.CE_loss_x + self.l2_loss_x) + self.beta*self.l2_loss_y
-            #self.g_h_loss = self.g_loss_adv + self.h_loss_adv + self.alpha*self.l2_loss_x + self.beta*self.l2_loss_y
-            #self.g_h_loss = self.h_loss_adv + self.beta*self.l2_loss_y
+
+        self.g_loss = self.g_loss_adv + self.alpha*(self.CE_loss_x + self.l2_loss_x) + self.beta*self.l2_loss_y
+        self.h_loss = self.h_loss_adv + self.alpha*(self.CE_loss_x + self.l2_loss_x) + self.beta*self.l2_loss_y
+        self.g_h_loss = self.g_loss_adv + self.h_loss_adv + self.alpha*(self.CE_loss_x + self.l2_loss_x) + self.beta*self.l2_loss_y
+        #self.g_h_loss = self.g_loss_adv + self.h_loss_adv + self.alpha*self.l2_loss_x + self.beta*self.l2_loss_y
+        #self.g_h_loss = self.h_loss_adv + self.beta*self.l2_loss_y
 
         #self.fake_x_onehot = tf.placeholder(tf.float32, [None, self.nb_classes], name='fake_x_onehot')
         #self.fake_x = tf.placeholder(tf.float32, [None, self.x_dim], name='fake_x')
@@ -181,7 +151,7 @@ class sysmGAN(object):
                 .minimize(self.gx_loss, var_list=self.h_net.vars)
 
         self.recon_x = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
-                .minimize(self.l2_loss_x+self.CE_loss_x, var_list=self.g_net.vars+self.h_net.vars)
+                .minimize(self.l2_loss_x+self.alpha*self.CE_loss_x, var_list=self.g_net.vars+self.h_net.vars)
         self.dis_y = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
                 .minimize(self.dy_loss, var_list=self.dy_net.vars)
         self.gen_y = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
@@ -235,7 +205,7 @@ class sysmGAN(object):
         for epoch in range(epochs):
             #np.random.shuffle(data_x)
             np.random.shuffle(data_y)
-            lr = 1e-4 #if epoch < epochs/2 else 1e-4#2e-4*(epochs-epoch)/(epochs-epochs/2)
+            lr = 2e-4 if epoch < epochs/2 else 1e-4#2e-4*(epochs-epoch)/(epochs-epochs/2)
             batch_idxs = len(data_y) // batch_size
             #lr decay, add later
             for idx in range(batch_idxs):
@@ -247,7 +217,6 @@ class sysmGAN(object):
                 #fake_bx, fake_bx_onehot, fake_by, _ = self.sess.run([self.x_,self.x_onehot_, self.y_,self.g_h_optim], feed_dict={self.x: bx, self.x_onehot: bx_onehot, self.y: by, self.lr:lr})
                 #_ = self.sess.run(self.g_h_optim, feed_dict={self.x: bx, self.x_onehot: bx_onehot, self.y: by, self.lr:lr})
                 #_ = self.sess.run(self.d_optim, feed_dict={self.x: bx, self.x_onehot: bx_onehot, self.y: by, self.lr:lr})
-                
                 _ = self.sess.run(self.recon_y, feed_dict={self.x: bx, self.x_onehot: bx_onehot, self.y: by, self.lr:lr})
                 _ = self.sess.run(self.dis_x, feed_dict={self.x: bx, self.x_onehot: bx_onehot, self.y: by, self.lr:lr})
                 _ = self.sess.run(self.gen_x, feed_dict={self.x: bx, self.x_onehot: bx_onehot, self.y: by, self.lr:lr})
@@ -290,11 +259,14 @@ class sysmGAN(object):
                 # summary = self.sess.run(self.merged_summary,feed_dict={self.x:bx,self.y:by})
                 # self.summary_writer.add_summary(summary, counter)
             if (epoch+1) % 20 == 0:
-                self.evaluate(timestamp,epoch)
+                if epoch+1 == epochs:
+                    self.evaluate(timestamp,epoch,True)
+                else:
+                    self.evaluate(timestamp,epoch)
 
         #self.save(timestamp)
 
-    def evaluate(self,timestamp,epoch):
+    def evaluate(self,timestamp,epoch,run_kmeans=False):
         #use all data
         #data_x, data_x_onehot, _ = self.x_sampler.load_all()
         data_y, label_y = self.y_sampler.load_all()
@@ -318,51 +290,30 @@ class sysmGAN(object):
             data_x_[ind, :] = batch_x_
             data_x_onehot_[ind, :] = batch_x_onehot_
             #data_y_[ind, :] = batch_y_
-        save_dir = 'data/density_est/{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
+        save_dir = 'data/cluster/cluster_{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         #np.savez('{}/data_at_{}.npz'.format(save_dir, epoch+1),data_x,data_y,data_x_,data_y_)
         np.savez('{}/data_at_{}.npz'.format(save_dir, epoch+1),data_x_,data_x_onehot_)
-        #self.plot_density_2D([data_x,data_y,data_x_,data_y_], '%s/figs'%save_dir, epoch)
         label_infer = np.argmax(data_x_onehot_, axis=1)
         purity = metric.compute_purity(label_infer, label_y)
         nmi = normalized_mutual_info_score(label_y, label_infer)
         ari = adjusted_rand_score(label_y, label_infer)
-        print('DeepSC: Purity = {}, NMI = {}, ARI = {}'.format(purity,nmi,ari))
+        print('RTM: Purity = {}, NMI = {}, ARI = {}'.format(purity,nmi,ari))
         f = open('%s/log.txt'%save_dir,'a+')
         f.write('%.4f\t%.4f\t%.4f\t%d\n'%(purity,nmi,ari,epoch))
         f.close()
         #k-means
-        if (epoch+1) % 1000 ==0:
+        if run_kmeans:
             km = KMeans(n_clusters=nb_classes, random_state=0).fit(data_y)
             label_kmeans = km.labels_
             purity = metric.compute_purity(label_kmeans, label_y)
             nmi = normalized_mutual_info_score(label_y, label_kmeans)
             ari = adjusted_rand_score(label_y, label_kmeans)
             print('K-means: Purity = {}, NMI = {}, ARI = {}'.format(purity,nmi,ari))
-        #calculate KL-divergency of data_x_ and data_x, data_y_ and data_y
-
-    def plot_density_2D(self,data,save_dir,epoch,dim1=0,dim2=1):
-        import matplotlib
-        matplotlib.use('agg')
-        import matplotlib.pyplot as plt
-        x, y, x_, y_ = data
-        plt.figure() 
-        plt.subplot(2,2,1)
-        plt.hist2d(x[:,dim1],x[:,dim2],bins=200)
-        plt.title('2D density of x')  
-        plt.subplot(2,2,2)
-        plt.hist2d(x_[:,dim1],x_[:,dim2],bins=200)
-        plt.title('2D density of x*')  
-        plt.subplot(2,2,3)
-        plt.hist2d(y[:,dim1],y[:,dim2],bins=200)
-        plt.title('2D density of y')  
-        plt.subplot(2,2,4)
-        plt.hist2d(y_[:,dim1],y_[:,dim2],bins=200)
-        plt.title('2D density of x')  
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        plt.savefig('%s/2D_density_%d_%d_%s.png'%(save_dir,dim1,dim2,epoch))
+            f = open('%s/log.txt'%save_dir,'a+')
+            f.write('%.4f\t%.4f\t%.4f\n'%(purity,nmi,ari))
+            f.close()
 
 
     def save(self, timestamp):
@@ -434,7 +385,7 @@ if __name__ == '__main__':
     #ys = util.Y_sampler(N=10000, n_components=2,dim=x_dim,mean=0.0,sd=1)
     #xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
     #ys = util.UniformDataSampler(N=10000,n_components=10,dim=y_dim,sd=1)
-    ys = util.GMM_sampler(N=10000,n_components=10,dim=y_dim,sd=1)
+    ys = util.GMM_sampler(N=10000,n_components=nb_classes,dim=y_dim,sd=1)
     #xs = util.X_sampler(N=10000, dim=x_dim, mean=3.0)
     #ys = util.Gaussian_sampler(N=10000,mean=np.zeros(y_dim),sd=1.0)
     # mean = np.array([[0.25, 0.25],[0.75, 0.75]])
@@ -443,19 +394,19 @@ if __name__ == '__main__':
     # cov = np.array([cov1,cov2])
     # weights = [0.4,0.6]
     # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
+    pool = util.DataPool()
 
-
-    cl_gan = sysmGAN(g_net, h_net, dx_net, dx_net_cat, dy_net, xs, ys, batch_size, nb_classes, alpha, beta)
+    RTM = RoundtripModel(g_net, h_net, dx_net, dx_net_cat, dy_net, xs, ys, pool, batch_size, nb_classes, alpha, beta)
 
     if args.train == 'True':
-        cl_gan.train()
+        RTM.train()
     else:
 
         print('Attempting to Restore Model ...')
         if timestamp == '':
-            cl_gan.load(pre_trained=True)
+            RTM.load(pre_trained=True)
             timestamp = 'pre-trained'
         else:
-            cl_gan.load(pre_trained=False, timestamp = timestamp)
+            RTM.load(pre_trained=False, timestamp = timestamp)
 
 
