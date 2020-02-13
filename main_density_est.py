@@ -1,3 +1,4 @@
+from __future__ import division
 import os,sys
 import time
 import dateutil.tz
@@ -5,13 +6,26 @@ import datetime
 import argparse
 import importlib
 import tensorflow as tf
+tf.set_random_seed(0)
 import numpy as np
 import math
 import metric
 import util
-from functools import reduce
 
-tf.set_random_seed(0)
+##########################################################################
+'''
+Instructions: Roundtrip model for density estimation
+    x,y - data from two distributions
+    y_  - learned distribution by G(.), namely y_=G(x)
+    x_  - learned distribution by H(.), namely x_=H(y)
+    y__ - reconstructed distribution, y__ = G(H(y))
+    x__ - reconstructed distribution, x__ = H(G(y))
+    G(.)  - generator network for mapping x space to y space
+    H(.)  - generator network for mapping y space to x space
+    Dx(.) - discriminator network in x space
+    Dy(.) - discriminator network in y space
+'''
+##########################################################################
 
 class RoundtripModel(object):
     def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, pool, batch_size, alpha, beta, sd_y, df, scale):
@@ -34,15 +48,6 @@ class RoundtripModel(object):
         self.x_dim = self.dx_net.input_dim
         self.y_dim = self.dy_net.input_dim
         tf.reset_default_graph()
-        ##########################################################################
-        '''
-            x,y - two data distributions
-            y_  - learned distribution by G(.), namely y_=G(x)
-            x_  - learned distribution by H(.), namely x_=H(y)
-            y__ - reconstructed distribution, y__ = G(H(y))
-            x__ - reconstructed distribution, x__ = H(G(y))
-        '''
-        ##########################################################################
 
         self.x = tf.placeholder(tf.float32, [None, self.x_dim], name='x')
         self.y = tf.placeholder(tf.float32, [None, self.y_dim], name='y')
@@ -66,8 +71,8 @@ class RoundtripModel(object):
         #self.g_loss_adv = -tf.reduce_mean(self.dy_)
         #self.h_loss_adv = -tf.reduce_mean(self.dx_)
         #(1-D(x))^2
-        self.g_loss_adv = tf.reduce_mean((tf.ones_like(self.dy_)  - self.dy_)**2)
-        self.h_loss_adv = tf.reduce_mean((tf.ones_like(self.dx_) - self.dx_)**2)
+        self.g_loss_adv = tf.reduce_mean((0.9*tf.ones_like(self.dy_)  - self.dy_)**2)
+        self.h_loss_adv = tf.reduce_mean((0.9*tf.ones_like(self.dx_) - self.dx_)**2)
         #cross_entropy
         #self.g_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy_, labels=tf.ones_like(self.dy_)))
         #self.h_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx_, labels=tf.ones_like(self.dx_)))
@@ -94,10 +99,10 @@ class RoundtripModel(object):
         #self.dx_loss = tf.reduce_mean(self.dx_) - tf.reduce_mean(self.dx)
         #self.dy_loss = tf.reduce_mean(self.dy_) - tf.reduce_mean(self.dy)
         #(1-D(x))^2
-        self.dx_loss = (tf.reduce_mean((tf.ones_like(self.dx) - self.dx)**2) \
-                +tf.reduce_mean((tf.zeros_like(self.d_fake_x) - self.d_fake_x)**2))/2.0
-        self.dy_loss = (tf.reduce_mean((tf.ones_like(self.dy) - self.dy)**2) \
-                +tf.reduce_mean((tf.zeros_like(self.d_fake_y) - self.d_fake_y)**2))/2.0
+        self.dx_loss = (tf.reduce_mean((0.9*tf.ones_like(self.dx) - self.dx)**2) \
+                +tf.reduce_mean((0.1*tf.zeros_like(self.d_fake_x) - self.d_fake_x)**2))/2.0
+        self.dy_loss = (tf.reduce_mean((0.9*tf.ones_like(self.dy) - self.dy)**2) \
+                +tf.reduce_mean((0.1*tf.zeros_like(self.d_fake_y) - self.d_fake_y)**2))/2.0
         #log(D(x))
         # self.dx_loss = (tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx, labels=tf.ones_like(self.dx))) \
         #         +tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake_x, labels=tf.zeros_like(self.d_fake_x))))/2.0
@@ -126,37 +131,42 @@ class RoundtripModel(object):
         now = datetime.datetime.now(dateutil.tz.tzlocal())
         self.timestamp = now.strftime('%Y%m%d_%H%M%S')
 
-        # self.g_loss_summary = tf.summary.scalar('g_loss',self.g_loss)
-        # self.h_loss_summary = tf.summary.scalar('h_loss',self.h_loss)
-        # self.g_h_loss_summary = tf.summary.scalar('g_h_loss',self.g_h_loss)
-        # self.dx_loss_summary = tf.summary.scalar('dx_loss',self.dx_loss)
-        # self.dy_loss_summary = tf.summary.scalar('dy_loss',self.dy_loss)
-        # self.d_loss_summary = tf.summary.scalar('d_loss',self.d_loss)
-        # self.merged_summary = tf.summary.merge([self.g_loss_summary, self.g_loss_summary,self.g_h_loss_summary,\
-        #     self.dx_loss_summary,self.dy_loss_summary,self.d_loss_summary])
-        # graph_dir = 'graph/{}_{}_{}_{}_{}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta)
-        # if not os.path.exists(graph_dir):
-        #     os.makedirs(graph_dir)
-        # self.summary_writer=tf.summary.FileWriter(graph_dir,graph=tf.get_default_graph())
-        save_dir = 'data/density_est/density_est_{}_x_dim={}_y_dim={}_alpha={}_beta={}_sd={}_df={}_scale={}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta, self.sd_y, self.df, self.scale)
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        self.save_dir = save_dir
-        self.saver = tf.train.Saver()
+        self.g_loss_adv_summary = tf.summary.scalar('g_loss_adv',self.g_loss_adv)
+        self.h_loss_adv_summary = tf.summary.scalar('h_loss_adv',self.h_loss_adv)
+        self.l2_loss_x_summary = tf.summary.scalar('l2_loss_x',self.l2_loss_x)
+        self.l2_loss_y_summary = tf.summary.scalar('l2_loss_y',self.l2_loss_y)
+        self.dx_loss_summary = tf.summary.scalar('dx_loss',self.dx_loss)
+        self.dy_loss_summary = tf.summary.scalar('dy_loss',self.dy_loss)
+        self.g_merged_summary = tf.summary.merge([self.g_loss_adv_summary, self.h_loss_adv_summary,\
+            self.l2_loss_x_summary,self.l2_loss_y_summary])
+        self.d_merged_summary = tf.summary.merge([self.dx_loss_summary,self.dy_loss_summary])
+        #graph path for tensorboard visualization
+        self.graph_dir = 'graph/density_est_{}_x_dim={}_y_dim={}_alpha={}_beta={}_sd={}_df={}_scale={}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta, self.sd_y, self.df, self.scale)
+        if not os.path.exists(self.graph_dir):
+            os.makedirs(self.graph_dir)
+        
+        #save path for saving predicted data
+        self.save_dir = 'data/density_est/density_est_{}_x_dim={}_y_dim={}_alpha={}_beta={}_sd={}_df={}_scale={}'.format(self.timestamp,self.x_dim, self.y_dim, self.alpha, self.beta, self.sd_y, self.df, self.scale)
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
+
+        self.saver = tf.train.Saver(max_to_keep=100)
 
         run_config = tf.ConfigProto()
         run_config.gpu_options.per_process_gpu_memory_fraction = 1.0
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
 
-    def train(self, epochs=3000):
+    def train(self, epochs=2000):
         #data_x, label_x = self.x_sampler.load_all()
         data_y, label_y = self.y_sampler.load_all()
         #data_x = np.array(data_x,dtype='float32')
         data_y = np.array(data_y,dtype='float32')
         batch_size = self.batch_size
+        data_y_val,_ = self.y_sampler.resample(1000)
         counter = 1
         self.sess.run(tf.global_variables_initializer())
+        self.summary_writer=tf.summary.FileWriter(self.graph_dir,graph=tf.get_default_graph())
         start_time = time.time()
         for epoch in range(epochs):
             #np.random.shuffle(data_x)
@@ -170,12 +180,14 @@ class RoundtripModel(object):
                 #bx = self.x_sampler.train(batch_size)
                 by = data_y[batch_size*idx:batch_size*(idx+1)]
                 #update G and get generated fake data
-                fake_bx, fake_by, _ = self.sess.run([self.x_,self.y_,self.g_h_optim], feed_dict={self.x: bx, self.y: by, self.lr:lr})
-                #random choose one batch from the previous 50 batches,flash back
+                fake_bx, fake_by, g_summary, _ = self.sess.run([self.x_,self.y_,self.g_merged_summary ,self.g_h_optim], feed_dict={self.x: bx, self.y: by, self.lr:lr})
+                self.summary_writer.add_summary(g_summary,counter)
+                #random choose one batch from the previous 50 batches
                 [fake_bx,fake_by] = self.pool([fake_bx,fake_by])
 
                 #update D
-                self.sess.run(self.d_optim, feed_dict={self.x: bx, self.y: by, self.fake_x: fake_bx, self.fake_y: fake_by,self.lr:lr})
+                d_summary,_ = self.sess.run([self.d_merged_summary, self.d_optim], feed_dict={self.x: bx, self.y: by, self.fake_x: fake_bx, self.fake_y: fake_by,self.lr:lr})
+                self.summary_writer.add_summary(d_summary,counter)
                 #quick test on a random batch data
                 if counter % 100 == 0:
                     bx = self.x_sampler.train(batch_size)
@@ -200,17 +212,17 @@ class RoundtripModel(object):
                 # summary = self.sess.run(self.merged_summary,feed_dict={self.x:bx,self.y:by})
                 # self.summary_writer.add_summary(summary, counter)
 
-            if (epoch+1) % 500 == 0:
+            if (epoch+1) % 300 == 0 or ((epoch+1) % 50==0 and epoch<300):
                 self.evaluate(epoch)
-                y_mean = self.y_sampler.mean
-                y_idx = np.random.choice(y_mean.shape[0], size=1000, replace=True)
-                y_val = np.array([np.random.normal(y_mean[i],scale=0.5) for i in y_idx],dtype='float64')
-                py_est = self.estimate_py_with_IS(y_val,epoch,sd_y=self.sd_y,sample_size=30000)
+                for sd in [0.5,0.7,0.9]:
+                    py_est = self.estimate_py_with_IS(data_y_val,epoch,sd_y=sd,scale=self.scale,sample_size=30000)
                 #save model weights
                 self.save(epoch)
 
+
+
     #predict with y_=G(x)
-    def predict_y(self, x, bs=64):
+    def predict_y(self, x, bs=256):
         assert x.shape[-1] == self.x_dim
         N = x.shape[0]
         y_pred = np.zeros(shape=(N, self.y_dim)) 
@@ -226,7 +238,7 @@ class RoundtripModel(object):
         return y_pred
     
     #predict with x_=H(y)
-    def predict_x(self,y,bs=64):
+    def predict_x(self,y,bs=256):
         assert y.shape[-1] == self.y_dim
         N = y.shape[0]
         x_pred = np.zeros(shape=(N, self.x_dim)) 
@@ -242,14 +254,18 @@ class RoundtripModel(object):
         return x_pred
 
     #estimate pdf of y (e.g., p(y)) with importance sampling
-    #parallel with each y_point
-    def estimate_py_with_IS(self,y_points,epoch,sd_y=0.5,sample_size=30000,save=True):
+    def estimate_py_with_IS(self,y_points,epoch,sd_y=0.45,scale=0.5,sample_size=30000,save=True):
         from scipy.stats import t
         from multiprocessing.dummy import Pool as ThreadPool
-        t0=time.time()
-        x_points_ = self.predict_x(y_points)
-        x_points_sample_list = [np.hstack([t.rvs(self.df, loc=value, scale=self.scale, size=(sample_size,1), random_state=None) for value in point]) for point in x_points_]
-        y_points_sample_list_ = [self.predict_y(each) for each in x_points_sample_list]
+
+        #multi-process to parallel the program
+        def program_paral(func,param_list):
+            pool = ThreadPool()
+            results = pool.map(func,param_list)
+            pool.close()
+            pool.join()
+            return results
+
         #def py_given_x(x_points, y_point):
         def py_given_x(zip_list):
             x_points = zip_list[0]
@@ -259,35 +275,55 @@ class RoundtripModel(object):
             #y_point wish shape (y_dim, )
             y_points_ = self.predict_y(x_points)
             return 1. / ((np.sqrt(2*np.pi)*sd_y)**self.y_dim) * np.exp(-(np.sum((y_point-y_points_)**2,axis=1))/(2.*sd_y**2))
+
         #def w_likelihood_ratio(x_point,x_points):
-        def w_likelihood_ratio(zip_list):
+        def w_likelihood_ratio(zip_list,scale=scale):
             x_point = zip_list[0]
             x_points = zip_list[1]
             #calculate w=px/py
             #x_point with shape (x_dim, )
             #x_points with shape (sample_size,x_dim)
-            qx =np.prod(t.pdf(x_point-x_points,self.df,loc=0,scale=self.scale),axis=1)
+            qx =np.prod(t.pdf(x_point-x_points,self.df,loc=0,scale=scale),axis=1)
             px = 1. / (np.sqrt(2*np.pi)**self.x_dim) * np.exp(-(np.sum((x_points)**2,axis=1))/2.)
             return px / qx
+
+        #sample a set of points given each x_point
+        def sample_from_qx(x_point,sample_size=sample_size, scale=scale):
+            return np.hstack([t.rvs(self.df, loc=value, scale=scale, size=(sample_size,1), random_state=None) for value in x_point])
+
+        t0=time.time()
+        x_points_ = self.predict_x(y_points)
+        t1 = time.time()
+        #print 'step1:predict', t1-t0
+
+        #x_points_sample_list = program_paral(sample_from_qx,x_points_)
+        x_points_sample_list = [np.hstack([t.rvs(self.df, loc=value, scale=scale, size=(sample_size,1), random_state=None) for value in point]) for point in x_points_]
+        t2 = time.time()
+        #print 'step2:sample', t2-t1
+
+        y_points_sample_list_ = program_paral(self.predict_y,x_points_sample_list)
+        #y_points_sample_list_ = [self.predict_y(each) for each in x_points_sample_list]
+        t3 = time.time()
+        #print 'step3:predict_given_sample',t3-t2
         #calculate p(y|x) with multi-process
-        pool = ThreadPool()
         #py_given_x_list = map(py_given_x, x_points_sample_list, y_points)
-        py_given_x_list = pool.map(py_given_x, zip(x_points_sample_list, y_points))
-        pool.close()
-        pool.join()
+        
+        py_given_x_list = program_paral(py_given_x, zip(x_points_sample_list, y_points))
+        t4 = time.time()
+        #print 'step4:py_given_x',t4-t3
+
         #calculate w=p(x)/q(x) with multi-process
-        pool = ThreadPool()
         #w_likelihood_ratio_list = map(w_likelihood_ratio, x_points_, x_points_sample_list)
-        w_likelihood_ratio_list = pool.map(w_likelihood_ratio, zip(x_points_, x_points_sample_list))
-        pool.close()
-        pool.join()
+        w_likelihood_ratio_list = program_paral(w_likelihood_ratio, zip(x_points_, x_points_sample_list))
+        t5 = time.time()
+        #print 'step5:weight',t5-t4
+
         #calculate p(y)=int(p(y|x)*p(x)dx)=int(p(y|x)*w(x)q(x)dx)=E(p(y|x)*w(x)) where x~q(x)
         py_list = map(lambda x, y: x*y,py_given_x_list,w_likelihood_ratio_list)
-
         py_est = np.array([np.mean(item) for item in py_list])
         print('Total time: %.1f s'%(time.time()-t0))
         if save:
-            np.savez('%s/py_est_at_epoch%d.npz'%(self.save_dir,epoch),py_est,self.y_sampler.mean,self.y_sampler.sd, y_points)
+            np.savez('%s/py_est_at_epoch%d_sd%.1f_scale%.1f.npz'%(self.save_dir,epoch,sd_y,scale), py_est, self.y_sampler.mean, self.y_sampler.sd, y_points)
         return py_est
 
 
@@ -380,15 +416,14 @@ if __name__ == '__main__':
     #h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=6,nb_units=256)
     g_net = model.Generator_resnet(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=10,nb_units=256)
     h_net = model.Generator_resnet(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=10,nb_units=256)
-    dx_net = model.Discriminator(input_dim = x_dim,name='dx_net',nb_layers=4,nb_units=256)
-    dy_net = model.Discriminator(input_dim = y_dim,name='dy_net',nb_layers=4,nb_units=256)
+    dx_net = model.Discriminator(input_dim=x_dim,name='dx_net',nb_layers=2,nb_units=32)
+    dy_net = model.Discriminator(input_dim=y_dim,name='dy_net',nb_layers=4,nb_units=64)
     #xs = util.Y_sampler(N=10000, n_components=2,dim=y_dim,mean=3.0,sd=0.5)
     #ys = util.Y_sampler(N=10000, n_components=2,dim=x_dim,mean=0.0,sd=1)
     xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
     #xs = util.X_sampler(N=10000, dim=x_dim, mean=3.0)
     #ys = util.Gaussian_sampler(N=10000,mean=np.zeros(y_dim),sd=1.0)
     ys = util.GMM_sampler(N=10000,n_components=5,dim=y_dim,sd=0.5)
-
     pool = util.DataPool()
     ################ gaussian mixture with 2 components############
     # mean = np.array([[0.25, 0.25],[0.75, 0.75]])
@@ -459,27 +494,37 @@ if __name__ == '__main__':
             RTM.load(pre_trained=True)
             timestamp = 'pre-trained'
         else:
-            RTM.load(pre_trained=False, timestamp = timestamp, epoch = 2999)
+            RTM.load(pre_trained=False, timestamp = timestamp, epoch = 2499)
             #RTM.estimate_py_with_IS(2999)
             import matplotlib
             matplotlib.use('agg')
             import matplotlib.pyplot as plt
+            from scipy.stats import norm
+            from scipy.stats import pearsonr
             t0=time.time()
-            y_mean = ys.mean
-            y_idx = np.random.choice(y_mean.shape[0], size=5000, replace=True)
-            y_val = np.array([np.random.normal(y_mean[i],scale=0.5) for i in y_idx],dtype='float64')
+            y_val,_ = ys.resample(1000)
+            start,end,nb_intervals = 0.2, 1.5, 15
+            def cal_pdf(y_point,mean):
+                y_pdf=[]
+                for i in range(len(y_point)):
+                    y_pdf.append(np.mean(norm.pdf(mean[:,i], loc=y_point[i], scale=0.5)))
+                return np.prod(y_pdf)
+            gmm_mean = ys.mean
+            py_true = map(cal_pdf,y_val,[gmm_mean]*len(y_val))
             mle=[]
-            for sd in np.linspace(0.1,1,19):
-                print sd
-                py_est = RTM.estimate_py_with_IS(y_val,1999,sd_y=sd)
-                sys.exit()
-                mle.append(np.sum(np.log(py_est+1e-100)))
+            for sd in np.linspace(start,end,nb_intervals):
+            #for sd in [0.757]:
+                #for scale in np.linspace(0.2,2,10):
+                for scale in [0.5]:
+                    py_est = RTM.estimate_py_with_IS(y_val,2999,sd_y=sd,scale=scale,sample_size=10000,save=False)
+                    print 'RTM', sd,scale, pearsonr(py_true,py_est)[0]
+                mle.append(np.sum(np.log(py_est+1e-20)))
             print mle
-            plt.plot(np.linspace(0.1,1,19),mle)
+            plt.plot(np.linspace(start,end,nb_intervals),mle)
             plt.xlabel('sd')
             plt.ylabel('log-likelihood')
-            plt.savefig('model_select_at_dim%d.png'%(y_mean.shape[1]))
-            best_sd = np.linspace(0.1,1,19)[mle.index(np.max(mle))]
+            plt.savefig('model_select_at_dim%d.png'%(gmm_mean.shape[1]))
+            best_sd = np.linspace(start,end,nb_intervals)[mle.index(np.max(mle))]
             print('%.2f seconds'%(time.time()-t0))
             print('Best sd for RTM:%.2f'%best_sd)
             

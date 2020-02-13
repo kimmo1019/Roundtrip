@@ -470,7 +470,7 @@ class SV_sampler(object):#stochastic volatility model
 #     logsigma ~ N (0, 1)
 class Cosine_sampler(object):
     def __init__(self, theta_init):
-        self.theta_init = theta_init
+        self.theta_init = theta_init#()
     def generate_data(self,sample_size,time_step,seed=0):#time series data t=1,2,3...
         np.random.seed(seed)
         theta = np.empty((sample_size, 4), dtype=np.float64)
@@ -526,43 +526,65 @@ class Cosine_sampler(object):
                 y_t = A[i] * np.cos(2 * np.pi * omega[i] * t + phi[i]) + sigma[i] * np.random.normal()
             data[i,:] = [y_t,t]
         return data, theta[:,:2] 
-    def generate_data3(self,sample_size,minibatch_size=2,seed=0):#minibatch=1 in the above generate_data2()
+    def generate_data3(self,sample_size,iteration,block_size=2,prior=None,seed=0):#minibatch=1 in the above generate_data2()
         np.random.seed(seed)
         theta = np.empty((sample_size, 4), dtype=np.float64)
-        data = np.empty((sample_size, minibatch_size), dtype=np.float64)
-        theta[:, 0] = np.random.normal(size=sample_size)
-        theta[:, 1] = np.random.uniform(low=0, high=np.pi, size=sample_size)
-        #theta[:, 2] = 0.5
-        theta[:, 2] = 1./10
-        theta[:, 3] = -10
+        data = np.empty((sample_size, block_size), dtype=np.float64)
+        if prior is None:
+            true_data = np.empty((1, block_size*10), dtype=np.float64)
+            theta[:, 0] = np.random.normal(size=sample_size)
+            theta[:, 1] = np.random.uniform(low=0, high=np.pi, size=sample_size)
+            #theta[:, 2] = 1./20
+            theta[:, 2] = 1./10
+            theta[:, 3] = np.log(0.3)
+        else:
+            theta[:,:2] = prior
+            #theta[:, 2] = 1./20
+            theta[:, 2] = 1./10
+            theta[:, 3] = np.log(0.3)
         #theta[0,:2] = [np.log(2),np.pi / 4]# (0.69, 0.78)
-        #theta[0,:2] = [0.0, np.pi / 2]  # (0, 1.57)
-        theta[0,:2] = [1, 3.*np.pi / 4]  #(1, 2.35)
+        theta[0,:2] = [0.0, np.pi / 2]  # (0, 1.57)
+        #theta[0,:2] = [1, 3.*np.pi / 4]  #(1, 2.35)
         #theta[0, :] = [1 / 80, np.pi / 4, 0, np.log(2)] 
-
         logA, phi, omega, logsigma = theta.transpose()
         sigma = np.exp(logsigma)
         A = np.exp(logA)
-        if minibatch_size==2:
-            t=[0.3,0.6]
-        else:
-            #t = np.linspace(0,1,minibatch_size)
-            t = list(range(minibatch_size))
+    
+        #t = np.linspace(0,1,block_size)
+        t = np.linspace(block_size*iteration,block_size*(iteration+1)-1,block_size)
+        #t = np.random.uniform(block_size*iteration,block_size*(iteration+1),size=block_size)
+        #Note that the first row is the observation data
         for i in range(sample_size):
-            each_list=[]
-            for j in range(minibatch_size):
-                if i<10:
-                    #t = np.random.uniform()
-                    y_t = A[0] * np.cos(2 * np.pi * omega[0] * t[j] + phi[0]) + 0.01 * np.random.normal()
-                    #each_list+=[y_t,t[j]]
-                    each_list+=[y_t]
-                else:
-                    #t = np.random.uniform()
-                    y_t = A[i] * np.cos(2 * np.pi * omega[i] * t[j] + phi[i]) + 0.01 * np.random.normal()
-                    #each_list+=[y_t,t[j]]
-                    each_list+=[y_t]
-            data[i,:] = each_list
-        return data, theta[:,:2]
+            data[i,:] = A[i] * np.cos(2 * np.pi * omega[i] * t + phi[i]) + sigma[i] * np.random.normal(size=block_size)
+        return data, theta[:,:2], t
+
+    def log_posterior_prob(self,iteration,block_size):
+        data,theta,t = self.generate_data3(1,iteration,block_size)
+        time_step = len(data)
+        logA, phi = theta[0,:]
+        omega, logsigma = 1./20, np.log(0.3)
+        sigma = np.exp(logsigma)
+        #logA, phi, omega, logsigma = 0, np.pi/2, 1./20, np.log(0.3)
+        def cal_posterior_prob_given_theta(params, omega=1./20,sigma=0.3,use_log=True):
+            logA, phi = params[0], params[1]
+            log_theta_prior = -logA**2/2
+            log_likelyhood = -np.sum((data[0,:]-np.exp(logA)*np.cos(2*np.pi*omega*t+phi))**2) / (2*sigma**2)
+            if use_log:
+                return log_theta_prior+log_likelyhood
+            else:
+                return np.exp(log_theta_prior+log_likelyhood)
+        print cal_posterior_prob_given_theta([0,np.pi/2])
+        
+        logA_axis = np.linspace(logA-2,logA+2,100)
+        phi_axis = np.linspace(phi-np.pi,phi+np.pi,80)
+        X,Y = np.meshgrid(logA_axis,phi_axis)
+        theta_list = np.vstack([X.ravel(), Y.ravel()]).T
+        log_posterior_list = map(cal_posterior_prob_given_theta,theta_list)
+        log_posterior_mat = np.reshape(log_posterior_list,(len(phi_axis),len(logA_axis)))
+        return log_posterior_mat
+
+
+        
 
         
 
@@ -575,13 +597,25 @@ if __name__=='__main__':
     import matplotlib
     matplotlib.use('agg')
     import matplotlib.pyplot as plt
+    import seaborn as sns
+    print 10%2.2
     s = Cosine_sampler([np.log(2),np.pi / 4])
-    data,theta = s.generate_data3(10,5)
-    print data.shape,theta.shape,theta[0,:]
-    print data[:4]
-    print 2*np.cos(np.pi*data[:4,1]+np.pi/4.)
-    print 2*np.cos(np.pi*data[:4,3]+np.pi/4.)
-
+    data,theta,a = s.generate_data3(10,0,5)
+    prob = s.log_posterior_prob(0,5)    
+    print prob.shape
+    print np.max(prob)
+    print(np.where(prob==np.max(prob)))
+    sns.set(style='whitegrid', color_codes=True)
+    sns.heatmap(np.exp(prob))
+    plt.title('posterior')
+    plt.savefig('posterior_map.png')
+    sys.exit()
+    print data.shape
+    print theta[0]
+    plt.plot(data[0,:50])
+    plt.xlabel('t')
+    plt.ylabel('y_t')
+    plt.savefig('a.png')
     sys.exit()
     
     X, Y = np.mgrid[-2:2:100j, -2:2:100j]
