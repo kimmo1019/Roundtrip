@@ -17,8 +17,8 @@ import random
 '''
 Instructions: Roundtrip model for Bayesian inference
 It contains three steps training at each processing data block.
-Step1 - train a standart Roundtrip model RTM(x1,y1)
-Step2 - pretrain a GAN model GAN(x2,y2)
+Step1 - train a Roundtrip model RTM(x1,y1)
+Step2 - train a Roundtrip model RTM(x2,y2)
 Step3 - train the extended GAN model GAN((x1,x2),(y1,y2)) where relationship
         between x1~y1 is modeled by RTM(x1,y1) and fixed
 
@@ -44,13 +44,14 @@ Step3 - train the extended GAN model GAN((x1,x2),(y1,y2)) where relationship
 ##########################################################################
 
 class RoundtripModel(object):
-    def __init__(self, g_net, h_net, dx_net1, dy_net1,dy_net2, dy_net, x_sampler1, x_sampler2, y_sampler, pool, batch_size, alpha, beta, epochs):
+    def __init__(self, g_net, h_net, dx_net1, dy_net1, dx_net2, dy_net2, dy_net, x_sampler1, x_sampler2, y_sampler, pool, batch_size, alpha, beta, gamma, epochs):
         self.model = model
         self.data = data
         self.g_net = g_net
         self.h_net = h_net
         self.dx_net1 = dx_net1
         self.dy_net1 = dy_net1
+        self.dx_net2 = dx_net2
         self.dy_net2 = dy_net2
         self.dy_net = dy_net
         self.x_sampler1 = x_sampler1
@@ -59,6 +60,7 @@ class RoundtripModel(object):
         self.batch_size = batch_size
         self.alpha = alpha
         self.beta = beta
+        self.gamma = gamma
         self.pool = pool
         self.epochs = epochs
         self.x_dim1 = self.g_net.input_dim1
@@ -90,6 +92,7 @@ class RoundtripModel(object):
         self.dx1_ = self.dx_net1(self.x1_, reuse=False)
         self.dy1_ = self.dy_net1(self.y1_, reuse=False)
 
+        self.dx2_ = self.dx_net2(self.x2_, reuse=False)
         self.dy2_ = self.dy_net2(self.y2_, reuse=False)
         self.dy_ = self.dy_net(self.y_, reuse=False)
         
@@ -97,21 +100,33 @@ class RoundtripModel(object):
         self.l2_loss_x1 = tf.reduce_mean((self.x1 - self.x1__)**2)
         self.l2_loss_y1 = tf.reduce_mean((self.y1 - self.y1__)**2)  
 
+        self.l2_loss_x2 = tf.reduce_mean((self.x2 - self.x2__)**2)
+        self.l2_loss_y2 = tf.reduce_mean((self.y2 - self.y2__)**2)  
+
+        def mse_loss(pred, data):
+            return tf.sqrt(2 * tf.nn.l2_loss(pred - data)) / self.batch_size
         #(1-D(x))^2
         self.g_loss_adv1 = tf.reduce_mean((0.9*tf.ones_like(self.dy1_)  - self.dy1_)**2)
         self.h_loss_adv1 = tf.reduce_mean((0.9*tf.ones_like(self.dx1_) - self.dx1_)**2)
         
         self.g_loss_adv2 = tf.reduce_mean((0.9*tf.ones_like(self.dy2_)  - self.dy2_)**2)
-        self.g_loss_adv = tf.reduce_mean((0.9*tf.ones_like(self.dy_)  - self.dy_)**2)
+        self.h_loss_adv2 = tf.reduce_mean((0.9*tf.ones_like(self.dx2_) - self.dx2_)**2)
+        #LS-gan loss
+        #self.g_loss_adv2 = tf.reduce_mean(mse_loss(self.dy2_, tf.ones_like(self.dy2_)))
+        self.g_loss_adv = tf.reduce_mean(mse_loss(self.dy_, tf.ones_like(self.dy_)))
+        #self.g_loss_adv2 = tf.reduce_mean((0.9*tf.ones_like(self.dy2_)  - self.dy2_)**2)
+        #self.g_loss_adv = tf.reduce_mean((0.9*tf.ones_like(self.dy_)  - self.dy_)**2)
 
         #cross_entropy
         #self.g_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy_, labels=tf.ones_like(self.dy_)))
         #self.h_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx_, labels=tf.ones_like(self.dx_)))
         self.g_loss1 = self.g_loss_adv1 + self.alpha*self.l2_loss_x1 + self.beta*self.l2_loss_y1
         self.h_loss1 = self.h_loss_adv1 + self.alpha*self.l2_loss_x1 + self.beta*self.l2_loss_y1
-
         self.g_h_loss1 = self.g_loss_adv1 + self.h_loss_adv1 + self.alpha*self.l2_loss_x1 + self.beta*self.l2_loss_y1
 
+        self.g_loss2 = self.g_loss_adv2 + self.alpha*self.l2_loss_x2 + self.beta*self.l2_loss_y2
+        self.h_loss2 = self.h_loss_adv2 + self.alpha*self.l2_loss_x2 + self.beta*self.l2_loss_y2
+        self.g_h_loss2 = self.g_loss_adv2 + self.h_loss_adv2 + self.alpha*self.l2_loss_x2 + self.beta*self.l2_loss_y2
 
         self.fake_x1 = tf.placeholder(tf.float32, [None, self.x_dim1], name='fake_x1')
         self.fake_x2 = tf.placeholder(tf.float32, [None, self.x_dim2], name='fake_x2')
@@ -122,32 +137,51 @@ class RoundtripModel(object):
 
         self.dx1 = self.dx_net1(self.x1)
         self.dy1 = self.dy_net1(self.y1)        
-        
+
+        self.dx2 = self.dx_net2(self.x2)
         self.dy2 = self.dy_net2(self.y2)
+
         self.dy = self.dy_net(self.y)
 
-        self.dy_loss2 = (tf.reduce_mean((0.9*tf.ones_like(self.dy2) - self.dy2)**2) \
-               +tf.reduce_mean((0.1*tf.zeros_like(self.dy2_) - self.dy2_)**2))/2.0
-        self.dy_loss = (tf.reduce_mean((0.9*tf.ones_like(self.dy) - self.dy)**2) \
-               +tf.reduce_mean((0.1*tf.zeros_like(self.dy_) - self.dy_)**2))/2.0
+        #LS-gan loss
+        self.dy_loss2 = (tf.reduce_mean(mse_loss(self.dy2, tf.ones_like(self.dy2))) \
+               +tf.reduce_mean(mse_loss(self.dy2_, tf.zeros_like(self.dy2_))))/2.0
+        self.dy_loss = (tf.reduce_mean(mse_loss(self.dy, tf.ones_like(self.dy))) \
+               +tf.reduce_mean(mse_loss(self.dy_, tf.zeros_like(self.dy_))))/2.0
+
+        # self.dy_loss2 = (tf.reduce_mean((0.9*tf.ones_like(self.dy2) - self.dy2)**2) \
+        #        +tf.reduce_mean((0.1*tf.zeros_like(self.dy2_) - self.dy2_)**2))/2.0
+        # self.dy_loss = (tf.reduce_mean((0.9*tf.ones_like(self.dy) - self.dy)**2) \
+        #        +tf.reduce_mean((0.1*tf.zeros_like(self.dy_) - self.dy_)**2))/2.0
         
         self.d_fake_x1 = self.dx_net1(self.fake_x1)
         self.d_fake_y1 = self.dy_net1(self.fake_y1)
-        
+
+        self.d_fake_x2 = self.dx_net2(self.fake_x2)
+        self.d_fake_y2 = self.dy_net2(self.fake_y2)
         #-D(x)
         #self.dx_loss = tf.reduce_mean(self.dx_) - tf.reduce_mean(self.dx)
         #self.dy_loss = tf.reduce_mean(self.dy_) - tf.reduce_mean(self.dy)
         #(1-D(x))^2
+        #0.1*zeros has no effect
         self.dx_loss1 = (tf.reduce_mean((0.9*tf.ones_like(self.dx1) - self.dx1)**2) \
-                +tf.reduce_mean((0.1*tf.zeros_like(self.d_fake_x1) - self.d_fake_x1)**2))/2.0
+                +tf.reduce_mean((0.1*tf.ones_like(self.d_fake_x1) - self.d_fake_x1)**2))/2.0
         self.dy_loss1 = (tf.reduce_mean((0.9*tf.ones_like(self.dy1) - self.dy1)**2) \
-                +tf.reduce_mean((0.1*tf.zeros_like(self.d_fake_y1) - self.d_fake_y1)**2))/2.0
+                +tf.reduce_mean((0.1*tf.ones_like(self.d_fake_y1) - self.d_fake_y1)**2))/2.0
  
         self.d_loss1 = self.dx_loss1 + self.dy_loss1
 
+        self.dx_loss2 = (tf.reduce_mean((0.9*tf.ones_like(self.dx2) - self.dx2)**2) \
+                +tf.reduce_mean((0.1*tf.ones_like(self.d_fake_x2) - self.d_fake_x2)**2))/2.0
+        self.dy_loss2 = (tf.reduce_mean((0.9*tf.ones_like(self.dy2) - self.dy2)**2) \
+                +tf.reduce_mean((0.1*tf.ones_like(self.d_fake_y2) - self.d_fake_y2)**2))/2.0
+ 
+        self.d_loss2 = self.dx_loss2 + self.dy_loss2
         #self.clip_dx = [var.assign(tf.clip_by_value(var, -0.01, 0.01)) for var in self.dx_net.vars]
         #self.clip_dy = [var.assign(tf.clip_by_value(var, -0.01, 0.01)) for var in self.dy_net.vars]
-        
+        self.clip_dy2 = [var.assign(tf.clip_by_value(var, -0.03, 0.03)) for var in self.dy_net2.vars]
+        self.clip_dy = [var.assign(tf.clip_by_value(var, -0.03, 0.03)) for var in self.dy_net.vars]
+
         self.lr = tf.placeholder(tf.float32, None, name='learning_rate')
 
         #stage1 RTM(x1,y1)
@@ -156,15 +190,21 @@ class RoundtripModel(object):
         self.d_optim1 = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
                 .minimize(self.d_loss1, var_list=self.dx_net1.vars+self.dy_net1.vars)
         
-        #stage2 pretrain GAN(x2,y2)
-        self.g_optim2 = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
-                .minimize(self.g_loss_adv2, var_list=self.g_net.vars[1])
+        #stage2 RTM(x2,y2)
+        self.g_h_optim2 = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
+                .minimize(self.g_h_loss2, var_list=self.g_net.vars[1]+self.h_net.vars[1])
         self.d_optim2 = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
-                .minimize(self.dy_loss2, var_list=self.dy_net2.vars)
-
+                .minimize(self.d_loss2, var_list=self.dx_net2.vars+self.dy_net2.vars)
+ 
         #stage3 train GAN((x1,x2),(y1,y2))
-        self.g_optim = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
-                .minimize(self.g_loss_adv, var_list=self.g_net.vars[1]+self.g_net.vars[2])
+        #cross weights l2 regularization
+        self.g_net_vars_z1 = self.g_net.vars[0]
+        self.g_net_vars_z2 = self.g_net.vars[1]
+        self.g_net_vars_zc = self.g_net.vars[2]
+        # self.l2_loss_c = 0.001*tf.add_n([ tf.nn.l2_loss(v) for v in self.g_net.vars[2]]) 
+        # self.l2_loss_w = 0.001*tf.add_n([ tf.nn.l2_loss(v) for v in self.g_net.vars[2]]) 
+        # self.g_optim = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
+        #         .minimize(self.g_loss_adv, var_list=self.g_net.vars[1]+self.g_net.vars[2])
         self.d_optim = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9) \
                 .minimize(self.dy_loss, var_list=self.dy_net.vars)
 
@@ -182,12 +222,12 @@ class RoundtripModel(object):
             self.l2_loss_x_summary,self.l2_loss_y_summary])
         self.d_merged_summary = tf.summary.merge([self.dx_loss_summary,self.dy_loss_summary])
         #graph path for tensorboard visualization
-        self.graph_dir = 'graph/bayes_infer_{}_x_dim={}_{}_y_dim={}_{}_alpha={}_beta={}'.format(self.timestamp,self.x_dim1, self.x_dim2, self.y_dim1, self.y_dim2, self.alpha, self.beta)
+        self.graph_dir = 'graph/bayes_infer_{}_x_dim={}_{}_y_dim={}_{}_alpha={}_beta={}_gamma={}_epochs={}_lr={}'.format(self.timestamp,self.x_dim1, self.x_dim2, self.y_dim1, self.y_dim2, self.alpha, self.beta, self.gamma, self.epochs, lr3)
         if not os.path.exists(self.graph_dir):
             os.makedirs(self.graph_dir)
-        
+
         #save path for saving predicted data
-        self.save_dir = 'data/bayes_infer/bayes_infer_{}_x_dim={}_{}_y_dim={}_{}_alpha={}_beta={}'.format(self.timestamp,self.x_dim1, self.x_dim2, self.y_dim1, self.y_dim2, self.alpha, self.beta)
+        self.save_dir = 'data/bayes_infer/bayes_infer_{}_x_dim={}_{}_y_dim={}_{}_alpha={}_beta={}_gamma={}_epochs={}_lr={}'.format(self.timestamp,self.x_dim1, self.x_dim2, self.y_dim1, self.y_dim2, self.alpha, self.beta, self.gamma, self.epochs, lr3)
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
 
@@ -197,23 +237,34 @@ class RoundtripModel(object):
         run_config.gpu_options.per_process_gpu_memory_fraction = 1.0
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
-    
-    def bayesian_iteration(self, sample_size=500000, n_iters=10):
+
+    def bayesian_iteration(self, sample_size=100000, n_iters=10):
         self.sess.run(tf.global_variables_initializer())
         self.summary_writer=tf.summary.FileWriter(self.graph_dir,graph=tf.get_default_graph())
         
         #self.y_true, self.theta_true = self.y_sampler.generate_data(sample_size=1,time_step=100)
         #y_prior, theta_prior = self.y_sampler.generate_data(sample_size)
-        y_prior, theta_prior, _ = self.y_sampler.generate_data3(sample_size, 0, self.y_dim1)
+        time_list = []
+        obs_list = []
+        y_prior, theta_prior, t = self.y_sampler.generate_data3(sample_size, 0)
+        time_list.append(t)
+        obs_list.append(y_prior[0,:])
+        np.savez('%s/iter0_stage0_init.npz'%self.save_dir,y_prior,theta_prior)
         self.y_true = y_prior[0:1,:]
-        np.savez('%s/stage0_init.npz'%self.save_dir,y_prior,theta_prior)
+        log_true_posterior_mat,axis_x,axis_y,est_theta = self.y_sampler.get_posterior(np.concatenate(obs_list,axis=0),np.concatenate(time_list,axis=0))
+        np.savez('%s/iter0_true_posterior.npz'%self.save_dir,log_true_posterior_mat,axis_x,axis_y,est_theta)
+        
         data_y1 = y_prior
         data_y2 = theta_prior
-        theta_posterior = self.train(data_y1,data_y2,0,epochs_list=self.epochs)#[5,5,2]
-
+        theta_posterior = self.train(data_y1,data_y2,0,epochs_list=self.epochs)#[10,25,25]
         for i in range(1,n_iters):
-            y_prior, theta_prior, _ = self.y_sampler.generate_data3(sample_size, i, self.y_dim1, prior=theta_posterior)
+            y_prior, theta_prior, t = self.y_sampler.generate_data3(sample_size, i, prior=theta_posterior)
+            np.savez('%s/iter%d_stage0_init.npz'%(self.save_dir,i),y_prior,theta_prior)
+            time_list.append(t)
+            obs_list.append(y_prior[0,:])
             self.y_true = y_prior[0:1,:]
+            log_true_posterior_mat,axis_x,axis_y,est_theta = self.y_sampler.get_posterior(np.concatenate(obs_list,axis=0),np.concatenate(time_list,axis=0))
+            np.savez('%s/iter%d_true_posterior.npz'%(self.save_dir,i),log_true_posterior_mat,axis_x,axis_y,est_theta)
             data_y1 = y_prior
             data_y2 = theta_prior
             self.sess.run(tf.global_variables_initializer())
@@ -232,7 +283,7 @@ class RoundtripModel(object):
             random.shuffle(train_idx)
             data_y1 = data_y1[train_idx]
             data_y2 = data_y2[train_idx]
-            lr = 2e-4 if epoch < epochs/2 else 2e-4*float(epochs-epoch)/float(epochs-epochs/2)
+            lr = 2e-4 #if epoch < epochs/2 else 2e-4*float(epochs-epoch)/float(epochs-epochs/2)
             batch_idxs = len(data_y1) // batch_size
             #lr decay, add later
             for idx in range(batch_idxs):
@@ -284,18 +335,17 @@ class RoundtripModel(object):
                 x1 = self.x_sampler1.get_batch(sample_size)
                 x2 = self.x_sampler2.get_batch(sample_size)
                 y1_, y2_ = self.predict_y(x1,x2)
-                np.savez('%s/stage1_RTM_iter%d_epoch%d.npz'%(self.save_dir,iteration,epoch),y1_,y2_)
+                np.savez('%s/iter%d_stage1_RTM_epoch%d.npz'%(self.save_dir,iteration,epoch),y1_,y2_)
 
 
-        
-        #STAGE 2 pretrain GAN(x2,y2)
+        #STAGE 2 RTM(x2,y2)
         epochs = epochs_list[1]
         for epoch in range(epochs):
             train_idx = list(range(data_y1.shape[0]))
             random.shuffle(train_idx)
             data_y1 = data_y1[train_idx]
             data_y2 = data_y2[train_idx]
-            lr = 1e-4 #if epoch < epochs/2 else 2e-4*float(epochs-epoch)/float(epochs-epochs/2)
+            lr = 2e-4 #if epoch < epochs/2 else 2e-4*float(epochs-epoch)/float(epochs-epochs/2)
             batch_idxs = len(data_y1) // batch_size
             #lr decay, add later
             for idx in range(batch_idxs):
@@ -305,44 +355,80 @@ class RoundtripModel(object):
                 #bx = self.x_sampler.train(batch_size)
                 by1 = data_y1[batch_size*idx:batch_size*(idx+1)]
                 by2 = data_y2[batch_size*idx:batch_size*(idx+1)]
+
+                #update G and get generated fake data
+                fake_bx, fake_by, g_summary, _ = self.sess.run([self.x_,self.y_,self.g_merged_summary ,self.g_h_optim2], feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2, self.lr:lr})
+                #self.summary_writer.add_summary(g_summary,counter)
+                #random choose one batch from the previous 50 batches as fake batch
+                [fake_bx,fake_by] = self.pool([fake_bx,fake_by])
+                fake_bx1 = fake_bx[:,:self.x_dim1]
+                fake_bx2 = fake_bx[:,self.x_dim1:]
+                fake_by1 = fake_by[:,:self.y_dim1]
+                fake_by2 = fake_by[:,self.y_dim1:]
                 #update D
-                _ = self.sess.run(self.d_optim2, feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2, self.lr:lr})
-                #update G 
-                _ = self.sess.run(self.g_optim2, feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2, self.lr:lr})
+                d_summary,_ = self.sess.run([self.d_merged_summary, self.d_optim2], feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2, \
+                    self.fake_x1: fake_bx1,self.fake_x2: fake_bx2, self.fake_y1: fake_by1,self.fake_y2: fake_by2,self.lr:lr})
+                                    
+                #update D
+                # _ = self.sess.run(self.d_optim2, feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2, self.lr:lr})
+                # self.sess.run(self.clip_dy2)
+                # #update G 
+                # if counter % 5 ==0:
+                #     _ = self.sess.run(self.g_optim2, feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2, self.lr:lr})
 
                 #self.summary_writer.add_summary(g_summary,counter)
-
-                #quick test on a random batch data
                 if counter % 100 == 0:
                     bx1 = self.x_sampler1.train(batch_size)
                     bx2 = self.x_sampler2.train(batch_size)
                     idx = np.random.randint(low = 0, high = data_y1.shape[0], size = batch_size)
                     by1,by2 = data_y1[idx],data_y2[idx]
+                    #by1,by2 = self.y_sampler.train(batch_size)
 
-                    g_loss_adv2, dy_loss2 = self.sess.run([self.g_loss_adv2, self.dy_loss2],
+                    g_loss_adv2, h_loss_adv2, l2_loss_x2, l2_loss_y2, g_loss2, \
+                        h_loss2, g_h_loss2, fake_bx1, fake_bx2, fake_by1, fake_by2 = self.sess.run(
+                        [self.g_loss_adv2, self.h_loss_adv2, self.l2_loss_x2, self.l2_loss_y2, \
+                        self.g_loss2, self.h_loss2, self.g_h_loss2, self.x1_, self.x2_, self.y1_,self.y2_],
                         feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2}
                     )
-                    print('Round [%d] Epoch [%d] Iter [%d] Time [%.4f] g_loss_adv2 [%.4f] dy_loss2 [%.4f]'%
-                        (iteration, epoch, counter, time.time() - start_time, g_loss_adv2, dy_loss2))                 
-                counter+=1
-            if (epoch+1)%5==0 or epoch+1==epochs:
+                    dx_loss2, dy_loss2, d_loss2 = self.sess.run([self.dx_loss2, self.dy_loss2, self.d_loss2], \
+                        feed_dict={self.x1: bx1, self.x2: bx2, self.y1: by1,self.y2: by2, self.fake_x1: fake_bx1,self.fake_x2: fake_bx2,\
+                             self.fake_y1: fake_by1,self.fake_y2: fake_by2})
+
+                    print('Round [%d] Epoch [%d] Iter [%d] Time [%5.4f] g_loss_adv2 [%.4f] h_loss_adv2 [%.4f] l2_loss_x2 [%.4f] \
+                        l2_loss_y2 [%.4f] g_loss2 [%.4f] h_loss2 [%.4f] g_h_loss2 [%.4f] dx_loss2 [%.4f] \
+                        dy_loss2 [%.4f] d_loss2 [%.4f]' %
+                        (iteration, epoch, counter, time.time() - start_time, g_loss_adv2, h_loss_adv2, l2_loss_x2, l2_loss_y2, \
+                        g_loss2, h_loss2, g_h_loss2, dx_loss2, dy_loss2, d_loss2))                 
+
+               counter+=1
+            if (epoch+1) % 2==0 or epoch+1==epochs:
                 #save pretrain theta
                 sample_size = data_y2.shape[0]
                 x1 = self.x_sampler1.get_batch(sample_size)
                 x2 = self.x_sampler2.get_batch(sample_size)
                 y1_, y2_ = self.predict_y(x1,x2)
-                np.savez('%s/stage2_pretrain_iter%d_epoch%d.npz'%(self.save_dir,iteration,epoch),y1_,y2_)
-                
-
-
+                np.savez('%s/iter%d_stage2_pretrain_epoch%d.npz'%(self.save_dir,iteration,epoch),y1_,y2_)
+        
         #STAGE 3 train GAN((x1,x2),(y1,y2))
+        # define loss function
+        #stage3 train GAN((x1,x2),(y1,y2))
+        # cross weights regularization in x1~y2 1/2*sum(ti**2)
+        self.l2_loss_c = tf.add_n([2 * tf.nn.l2_loss(v) for v in self.g_net_vars_zc]) / len(self.g_net_vars_zc)
+        #weights regularization in x2~y2
+        w_pretrain = self.sess.run(self.g_net_vars_z2)
+        self.l2_loss_w = tf.add_n([2 * tf.nn.l2_loss(v[0]-v[1]) for v in zip(self.g_net_vars_z2,w_pretrain)]) / len(self.g_net_vars_z2)
+        adam_g = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.9)
+        self.g_optim = adam_g.minimize(self.g_loss_adv+self.gamma*(self.l2_loss_c+self.l2_loss_w), var_list=self.g_net_vars_z2+self.g_net_vars_zc)
+        self.sess.run(tf.variables_initializer(adam_g.variables()))
+
         epochs = epochs_list[2]
         for epoch in range(epochs):
             train_idx = list(range(data_y1.shape[0]))
             random.shuffle(train_idx)
             data_y1 = data_y1[train_idx]
             data_y2 = data_y2[train_idx]
-            lr = 1e-4 #if epoch < epochs/2 else 2e-4*float(epochs-epoch)/float(epochs-epochs/2)
+            #lr = 1e-5 #if epoch < epochs/2 else 2e-4*float(epochs-epoch)/float(epochs-epochs/2)
+            lr = lr3 #if epoch < epochs/2 else 2e-4*float(epochs-epoch)/float(epochs-epochs/2)
             batch_idxs = len(data_y1) // batch_size
             #lr decay, add later
             for idx in range(batch_idxs):
@@ -354,8 +440,10 @@ class RoundtripModel(object):
                 by2 = data_y2[batch_size*idx:batch_size*(idx+1)]
                 #update D
                 _ = self.sess.run(self.d_optim, feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2, self.lr:lr})
-                #update G 
-                _ = self.sess.run(self.g_optim, feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2, self.lr:lr})
+                self.sess.run(self.clip_dy)
+                if counter %5 ==0:
+                    #update G 
+                    _ = self.sess.run(self.g_optim, feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2, self.lr:lr})
 
                 #self.summary_writer.add_summary(g_summary,counter)
 
@@ -366,11 +454,12 @@ class RoundtripModel(object):
                     idx = np.random.randint(low = 0, high = data_y1.shape[0], size = batch_size)
                     by1,by2 = data_y1[idx],data_y2[idx]
 
-                    g_loss_adv, dy_loss = self.sess.run([self.g_loss_adv, self.dy_loss],
+                    g_loss_adv, dy_loss, l2_loss_c, l2_loss_w = self.sess.run([self.g_loss_adv, self.dy_loss, self.l2_loss_c, self.l2_loss_w],
                         feed_dict={self.x1: bx1, self.x2:bx2, self.y1: by1, self.y2: by2}
                     )
-                    print('Round [%d] Epoch [%d] Iter [%d] Time [%.4f] g_loss_adv [%.4f] dy_loss [%.4f]'%
-                        (iteration, epoch, counter, time.time() - start_time, g_loss_adv, dy_loss))       
+                    print('Round [%d] Epoch [%d] Iter [%d] Time [%.4f] g_loss_adv [%.4f] dy_loss [%.4f] \
+                        l2_loss_c [%.4f] l2_loss_w [%.4f]'%
+                        (iteration, epoch, counter, time.time() - start_time, g_loss_adv, dy_loss, l2_loss_c,l2_loss_w))       
                 counter+=1
 
             if (epoch+1)%2==0 or epoch+1==epochs:
@@ -380,7 +469,7 @@ class RoundtripModel(object):
                 x2 = self.x_sampler2.get_batch(sample_size)
                 _, y2_ = self.predict_y(x1,x2)
                 #y2_[:,1] %= np.pi #restrict [0,np.pi]
-                np.save('%s/theta_posterior_iter%d_epoch%d.npy'%(self.save_dir,iteration,epoch),y2_)
+                np.save('%s/iter%d_theta_posterior_epoch%d.npy'%(self.save_dir,iteration,epoch),y2_)
         return y2_
  
 
@@ -493,8 +582,10 @@ if __name__ == '__main__':
     parser.add_argument('--dy1', type=int, default=10)
     parser.add_argument('--dy2', type=int, default=10)
     parser.add_argument('--bs', type=int, default=64)
+    parser.add_argument('--lr', type=float, default=0.00001)
     parser.add_argument('--alpha', type=float, default=10.0)
     parser.add_argument('--beta', type=float, default=10.0)
+    parser.add_argument('--gamma', type=float, default=0.1,help='penalty coefficient in stage3')
     parser.add_argument('--timestamp', type=str, default='')
     parser.add_argument('--train', type=str, default='False')
     parser.add_argument('--epochs', nargs='+', type=int, help='set epochs for 3 stages')
@@ -506,32 +597,40 @@ if __name__ == '__main__':
     y_dim1 = args.dy1
     y_dim2 = args.dy2
     batch_size = args.bs
+    lr3 = args.lr
     alpha = args.alpha
     beta = args.beta
+    gamma = args.gamma
     timestamp = args.timestamp
     epochs = args.epochs
 
-
     #g_net = model.Generator(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=6,nb_units=256)
     #h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=6,nb_units=256)
-    g_net = model.Generator_PCN(input_dim1=x_dim1,input_dim2=x_dim2,output_dim1=y_dim1,output_dim2=y_dim2,name='g_net',nb_layers=3,nb_units=32)
-    h_net = model.Generator_PCN(input_dim1=y_dim1,input_dim2=y_dim2,output_dim1=x_dim1,output_dim2=x_dim2,name='h_net',nb_layers=3,nb_units=32)
-    dx_net1 = model.Discriminator(input_dim=x_dim1,name='dx_net1',nb_layers=2,nb_units=16)
-    dy_net1 = model.Discriminator(input_dim=y_dim1,name='dy_net1',nb_layers=2,nb_units=16)
-    dy_net2 = model.Discriminator(input_dim=y_dim2,name='dy_net2',nb_layers=2,nb_units=16)
-    dy_net = model.Discriminator(input_dim=y_dim1+y_dim2,name='dx_net_all',nb_layers=2,nb_units=16)
+    #(64,3,2)
+    units = 128
+    g_layers = 5
+    d_layers = 3
+    g_net = model.Generator_PCN(input_dim1=x_dim1,input_dim2=x_dim2,output_dim1=y_dim1,output_dim2=y_dim2,name='g_net',nb_layers=g_layers,nb_units=units)
+    h_net = model.Generator_PCN(input_dim1=y_dim1,input_dim2=y_dim2,output_dim1=x_dim1,output_dim2=x_dim2,name='h_net',nb_layers=g_layers,nb_units=units)
+    dx_net1 = model.Discriminator(input_dim=x_dim1,name='dx_net1',nb_layers=d_layers,nb_units=units)
+    dy_net1 = model.Discriminator(input_dim=y_dim1,name='dy_net1',nb_layers=d_layers,nb_units=units)
+    dx_net2 = model.Discriminator(input_dim=x_dim2,name='dx_net2',nb_layers=d_layers,nb_units=units)
+    dy_net2 = model.Discriminator(input_dim=y_dim2,name='dy_net2',nb_layers=d_layers,nb_units=units)
+    dy_net = model.Discriminator(input_dim=y_dim1+y_dim2,name='dx_net_all',nb_layers=d_layers,nb_units=units)
 
     #xs = util.Y_sampler(N=10000, n_components=2,dim=y_dim,mean=3.0,sd=0.5)
     #ys = util.Y_sampler(N=10000, n_components=2,dim=x_dim,mean=0.0,sd=1)
-    xs1 = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim1),sd=1.0)
-    xs2 = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim2),sd=1.0)
+    #xs1 = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim1),sd=1.0)
+    xs1 = util.Uniform_sampler(N=10000, dim=x_dim1, mean=0.0)
+    #xs2 = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim2),sd=1.0)
+    xs2 = util.Uniform_sampler(N=10000, dim=x_dim2, mean=0.0)
     #xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
     #xs = util.X_sampler(N=10000, dim=x_dim, mean=3.0)
     #ys = util.Gaussian_sampler(N=10000,mean=np.zeros(y_dim),sd=1.0)
     #ys = util.Bayesian_sampler(N=10000,dim1=y_dim1, dim2=y_dim2)
     #ys = util.Bayesian_sampler(N=5205,dim1=y_dim1, dim2=y_dim2)
     #ys = util.SV_sampler([0.0314, 0.9967, 0.0107, 19.6797, -1.1528],10)
-    ys = util.Cosine_sampler([1. / 80, np.pi / 4, 0, np.log(2)])
+    ys = util.Cosine_sampler(block_size=y_dim1)
     pool = util.DataPool()
     
     #sys.exit()
@@ -594,7 +693,7 @@ if __name__ == '__main__':
     # weights = [0.5,0.5]
     # ys = util.GMM_Uni_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
-    RTM = RoundtripModel(g_net, h_net, dx_net1, dy_net1, dy_net2, dy_net, xs1, xs2, ys, pool, batch_size, alpha, beta, epochs)
+    RTM = RoundtripModel(g_net, h_net, dx_net1, dy_net1, dx_net2, dy_net2, dy_net, xs1, xs2, ys, pool, batch_size, alpha, beta, gamma, epochs)
 
     if args.train == 'True':
         RTM.bayesian_iteration()
