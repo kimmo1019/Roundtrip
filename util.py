@@ -8,6 +8,7 @@ import scipy.special
 from scipy.stats import t, uniform, norm, truncnorm, invgamma, gamma
 from scipy import pi
 from tqdm import tqdm
+import sys
 
 #pbmc ~68k single cell RNA-seq data
 class DataSampler(object):
@@ -154,7 +155,7 @@ class GMM_Uni_sampler(object):
     def load_all(self):
         return self.X, self.Y
 
-class X_sampler(object):
+class Uniform_sampler(object):
     def __init__(self, N, dim, mean):
         self.total_size = N
         self.dim = dim 
@@ -170,11 +171,7 @@ class X_sampler(object):
         return np.random.uniform(self.mean-0.5,self.mean+0.5,(batch_size,self.dim))
     #for data sampling given batch size
     def train(self, batch_size, label = False):
-        indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
-        if label:
-            return self.X[indx, :], self.Y[indx].flatten()
-        else:
-            return self.X[indx, :]
+        return np.random.uniform(self.mean-0.5,self.mean+0.5,(batch_size,self.dim))
 
     def load_all(self):
         return self.X, self.Y
@@ -356,8 +353,6 @@ class SV_sampler(object):#stochastic volatility model
         #self.y_true, _, self.h_true = self.generate_data(sample_size=1,time_step=1000,use_prior=True)
         #print self.y_true[0,-5:]
 
-
-
     def generate_data(self,sample_size,time_step,theta=None,h_0=None,use_prior=False, seed = 1):
         np.random.seed(seed)
         assert len(self.theta_init)==5
@@ -469,8 +464,11 @@ class SV_sampler(object):#stochastic volatility model
 #     omega ~ Unif(0, 0.1)
 #     logsigma ~ N (0, 1)
 class Cosine_sampler(object):
-    def __init__(self, theta_init):
-        self.theta_init = theta_init#()
+    def __init__(self, omega=1./10,sigma=0.1,iteration=10,block_size=10):
+        self.omega = omega
+        self.sigma = sigma
+        self.block_size = block_size
+        self.observation = np.zeros(iteration*block_size)
     def generate_data(self,sample_size,time_step,seed=0):#time series data t=1,2,3...
         np.random.seed(seed)
         theta = np.empty((sample_size, 4), dtype=np.float64)
@@ -526,67 +524,77 @@ class Cosine_sampler(object):
                 y_t = A[i] * np.cos(2 * np.pi * omega[i] * t + phi[i]) + sigma[i] * np.random.normal()
             data[i,:] = [y_t,t]
         return data, theta[:,:2] 
-    def generate_data3(self,sample_size,iteration,block_size=2,prior=None,seed=0):#minibatch=1 in the above generate_data2()
-        np.random.seed(seed)
-        theta = np.empty((sample_size, 4), dtype=np.float64)
-        data = np.empty((sample_size, block_size), dtype=np.float64)
+        
+    def generate_data3(self,sample_size,iteration,prior=None,seed=0):#minibatch=1 in the above generate_data2()
+        #np.random.seed(seed)
+        np.random.seed(iteration)
+        params = np.empty((sample_size, 2), dtype=np.float64)
+        data = np.empty((sample_size, self.block_size), dtype=np.float64)
         if prior is None:
-            true_data = np.empty((1, block_size*10), dtype=np.float64)
-            theta[:, 0] = np.random.normal(size=sample_size)
-            theta[:, 1] = np.random.uniform(low=0, high=np.pi, size=sample_size)
-            #theta[:, 2] = 1./20
-            theta[:, 2] = 1./10
-            theta[:, 3] = np.log(0.3)
+            params[:, 0] = np.random.normal(size=sample_size)
+            params[:, 1] = np.random.uniform(low=-np.pi, high=np.pi, size=sample_size)
         else:
-            theta[:,:2] = prior
-            #theta[:, 2] = 1./20
-            theta[:, 2] = 1./10
-            theta[:, 3] = np.log(0.3)
-        #theta[0,:2] = [np.log(2),np.pi / 4]# (0.69, 0.78)
-        theta[0,:2] = [0.0, np.pi / 2]  # (0, 1.57)
-        #theta[0,:2] = [1, 3.*np.pi / 4]  #(1, 2.35)
-        #theta[0, :] = [1 / 80, np.pi / 4, 0, np.log(2)] 
-        logA, phi, omega, logsigma = theta.transpose()
-        sigma = np.exp(logsigma)
+            params[:,:2] = prior
+        #params[0,:2] = [np.log(2),np.pi / 4]# (0.69, 0.78)
+        params[0,:] = [0.0, np.pi / 2]  # (0, 1.57)
+        #params[0,:2] = [1, 3.*np.pi / 4]  #(1, 2.35)
+        #params[0, :] = [1 / 80, np.pi / 4, 0, np.log(2)] 
+        logA, phi = params.transpose()
         A = np.exp(logA)
     
-        #t = np.linspace(0,1,block_size)
-        t = np.linspace(block_size*iteration,block_size*(iteration+1)-1,block_size)
-        #t = np.random.uniform(block_size*iteration,block_size*(iteration+1),size=block_size)
+        #t = np.linspace(self.block_size*iteration,self.block_size*(iteration+1)-1,self.block_size)
+        t = np.random.uniform(self.block_size*iteration,self.block_size*(iteration+1),size=self.block_size)
         #Note that the first row is the observation data
         for i in range(sample_size):
-            data[i,:] = A[i] * np.cos(2 * np.pi * omega[i] * t + phi[i]) + sigma[i] * np.random.normal(size=block_size)
-        return data, theta[:,:2], t
+            data[i,:] = A[i] * np.cos(2 * np.pi * self.omega * t + phi[i]) + self.sigma * np.random.normal(size=self.block_size)
+        return data, params, t
 
-    def log_posterior_prob(self,iteration,block_size):
-        data,theta,t = self.generate_data3(1,iteration,block_size)
-        time_step = len(data)
-        logA, phi = theta[0,:]
-        omega, logsigma = 1./20, np.log(0.3)
-        sigma = np.exp(logsigma)
-        #logA, phi, omega, logsigma = 0, np.pi/2, 1./20, np.log(0.3)
-        def cal_posterior_prob_given_theta(params, omega=1./20,sigma=0.3,use_log=True):
-            logA, phi = params[0], params[1]
-            log_theta_prior = -logA**2/2
-            log_likelyhood = -np.sum((data[0,:]-np.exp(logA)*np.cos(2*np.pi*omega*t+phi))**2) / (2*sigma**2)
+    def get_posterior(self, data, t, res = 100):
+        #get the truth params
+        _,params,_ = self.generate_data3(1,0,self.block_size)
+        logA, phi = params[0,:]
+
+        #calculate posterior using bayesian formula
+        def cal_bayesian_posterior(data,t,params_list,use_log=True):
+            logA, phi = params_list
+            A = np.exp(logA)
+            log_params_prior = -logA**2/2
+            log_likelyhood = np.array([-np.sum((data-A_*np.cos(2*np.pi * self.omega *t+phi_))**2) / (2*self.sigma**2) \
+                for A_, phi_ in zip(A, phi)])
             if use_log:
-                return log_theta_prior+log_likelyhood
+                return log_params_prior+log_likelyhood
             else:
-                return np.exp(log_theta_prior+log_likelyhood)
-        print cal_posterior_prob_given_theta([0,np.pi/2])
-        
-        logA_axis = np.linspace(logA-2,logA+2,100)
-        phi_axis = np.linspace(phi-np.pi,phi+np.pi,80)
+                return np.exp(log_params_prior+log_likelyhood)
+
+        #sample theta by Metroplis-Hasting algorithm 
+        def sample_posterior(data, t, sample_size=1000, chain_len=500, seed=0):
+            np.random.seed(seed)
+            para_temp = np.zeros((2, sample_size), dtype=np.float64)
+            #starting states of Markov Chain
+            para_temp[0, :] = 0 # logA
+            para_temp[1, :] = 0  #phi
+
+            for _ in tqdm(range(chain_len)):
+                para_propose = para_temp + np.random.normal(scale=0.1, size=(2, sample_size))
+                #para_propose[0, :] %= 0.1
+                para_propose[1, :] += 2*np.pi
+                para_propose[1, :] %= (4 * np.pi)
+                para_propose[1, :] -= 2*np.pi
+                #para_propose[1, :] = para_propose[1, :]%(2 * np.pi)-np.pi 
+                mask = cal_bayesian_posterior(data, t, para_propose) > np.log(np.random.uniform(size=sample_size)) \
+                    + cal_bayesian_posterior(data, t, para_temp)
+                para_temp[:, mask] = para_propose[:, mask]
+            return para_temp.T
+
+        logA_axis = np.linspace(logA-2,logA+2,res)
+        phi_axis = np.linspace(phi-3*np.pi,phi+np.pi,res)
         X,Y = np.meshgrid(logA_axis,phi_axis)
-        theta_list = np.vstack([X.ravel(), Y.ravel()]).T
-        log_posterior_list = map(cal_posterior_prob_given_theta,theta_list)
-        log_posterior_mat = np.reshape(log_posterior_list,(len(phi_axis),len(logA_axis)))
-        return log_posterior_mat
-
-
-        
-
-        
+        params_stacks = np.vstack([X.ravel(), Y.ravel()]) #shape (2, N*N)
+        #log_posterior_list = map(cal_beyesian_posterior,theta_list)
+        bayesian_posterior_stacks = cal_bayesian_posterior(data, t, params_stacks)
+        bayesian_posterior_mat = np.reshape(bayesian_posterior_stacks,(len(phi_axis),len(logA_axis)))
+        params_sampled = sample_posterior(data,t)
+        return bayesian_posterior_mat, logA_axis, phi_axis, params_sampled
 
 
 
@@ -598,16 +606,59 @@ if __name__=='__main__':
     matplotlib.use('agg')
     import matplotlib.pyplot as plt
     import seaborn as sns
-    print 10%2.2
-    s = Cosine_sampler([np.log(2),np.pi / 4])
-    data,theta,a = s.generate_data3(10,0,5)
-    prob = s.log_posterior_prob(0,5)    
-    print prob.shape
-    print np.max(prob)
-    print(np.where(prob==np.max(prob)))
-    sns.set(style='whitegrid', color_codes=True)
-    sns.heatmap(np.exp(prob))
+
+    s = Cosine_sampler(block_size=10)
+    data_list,t_list=[],[]
+    for i in range(10):
+        print len(data_list),len(t_list)
+        if i==0:
+            data, theta, t = s.generate_data3(100000,i)
+        else:
+            data, theta, t = s.generate_data3(100000,i,prior=theta)
+        data_list.append(data[0,:])
+        t_list.append(t)
+        log_prob,axis_x,axis_y,sampled_theta = s.get_posterior(np.concatenate(data_list,axis=0),np.concatenate(t_list,axis=0))
+        fig, ax = plt.subplots(1, 2)
+        ax[0].hist(sampled_theta[:,0], bins=30,alpha=0.75)
+        ax[1].hist(sampled_theta[:,1], bins=30,alpha=0.75)
+        plt.savefig('data/bayes_infer/posterior2/iter_%d_sampled_posterior.png'%i)
+        plt.close('all')
+        prob = np.exp(log_prob)
+        z_min, z_max = -np.abs(prob).max(), np.abs(prob).max()
+        plt.imshow(prob, cmap='RdBu', vmin=z_min, vmax=z_max,
+                extent=[axis_x.min(), axis_x.max(), axis_y.min(), axis_y.max()],
+                interpolation='nearest', origin='lower')
+        plt.title('Beyesian posterior')
+        plt.colorbar()
+        plt.savefig('data/bayes_infer/posterior2/iter_%d_posterior_2d.png'%i)
+        plt.close('all')
+        
+    sys.exit()
+    data, theta, t = s.generate_data3(50000,0)
+    print data[0],t
+    data, theta, t = s.generate_data3(50000,1,prior=np.zeros(theta.shape))
+    print data[0],t
+    data, theta, t = s.generate_data3(50000,2,prior=np.zeros(theta.shape))
+    print data[0],t
+    sys.exit(0)
+    log_prob,axis_x,axis_y,sampled_theta = s.get_posterior(data[0,:],t,0)
+    fig, ax = plt.subplots(1, 2)
+    ax[0].hist(sampled_theta[:,0], bins=100,alpha=0.75)
+    ax[1].hist(sampled_theta[:,1], bins=100,alpha=0.75)
+    plt.savefig('sampled_posterior.png')
+    plt.close()
+    print log_prob.shape
+    print np.max(log_prob)
+    print(np.where(log_prob==np.max(log_prob)))
+    # sns.set(style='whitegrid', color_codes=True)
+    # sns.heatmap(np.exp(prob))
+    prob = np.exp(log_prob)
+    z_min, z_max = -np.abs(prob).max(), np.abs(prob).max()
+    plt.imshow(prob, cmap='RdBu', vmin=z_min, vmax=z_max,
+            extent=[axis_x.min(), axis_x.max(), axis_y.min(), axis_y.max()],
+            interpolation='nearest', origin='lower')
     plt.title('posterior')
+    plt.colorbar()
     plt.savefig('posterior_map.png')
     sys.exit()
     print data.shape
