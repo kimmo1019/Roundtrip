@@ -15,7 +15,7 @@ import util
 
 ##########################################################################
 '''
-Instructions: Roundtrip model for density estimation in image generation
+Instructions: Roundtrip model for density estimation in image generation, given label
     x,y - data from two distributions
     y_  - learned distribution by G(.), namely y_=G(x)
     x_  - learned distribution by H(.), namely x_=H(y)
@@ -48,8 +48,8 @@ class RoundtripModel(object):
         self.df = df
         self.scale = scale
         self.use_L1=False# l2 is better than l1
-        self.x_dim = self.dx_net.input_dim
-        self.y_dim = self.dy_net.input_dim
+        self.x_dim = x_dim
+        self.y_dim = y_dim
         tf.reset_default_graph()
 
         self.x = tf.placeholder(tf.float32, [None, self.x_dim], name='x')
@@ -65,9 +65,9 @@ class RoundtripModel(object):
         self.x_combine_ = tf.concat([self.x_, self.x_onehot_],axis=1)
         self.y__ = self.g_net(self.x_combine_)
 
-        self.dy_ = self.dy_net(self.y_, reuse=False)
-        self.dx_ = self.dx_net(self.x_, reuse=False)
-        self.dx_onehot_ = self.dx_net_cat(self.x_onehot_, reuse=False)
+        self.dy_ = self.dy_net(tf.concat([self.y_, self.x_onehot],axis=1), reuse=False)
+        self.dx_ = self.dx_net(tf.concat([self.x_, self.x_onehot_],axis=1), reuse=False)
+        #self.dx_onehot_ = self.dx_net_cat(self.x_onehot_, reuse=False)
 
         self.l1_loss_x = tf.reduce_mean(tf.abs(self.x - self.x__))
         self.l1_loss_y = tf.reduce_mean(tf.abs(self.y - self.y__))
@@ -80,8 +80,8 @@ class RoundtripModel(object):
         #self.h_loss_adv = -tf.reduce_mean(self.dx_)
         #(1-D(x))^2
         self.g_loss_adv = tf.reduce_mean((0.9*tf.ones_like(self.dy_)  - self.dy_)**2) 
-        self.h_loss_adv = tf.reduce_mean((0.9*tf.ones_like(self.dx_) - self.dx_)**2) + \
-            tf.reduce_mean((0.9*tf.ones_like(self.dx_onehot_) - self.dx_onehot_)**2)
+        self.h_loss_adv = tf.reduce_mean((0.9*tf.ones_like(self.dx_) - self.dx_)**2) #+ \
+            #tf.reduce_mean((0.9*tf.ones_like(self.dx_onehot_) - self.dx_onehot_)**2)
         #cross_entropy
         #self.g_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dy_, labels=tf.ones_like(self.dy_)))
         #self.h_loss_adv = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.dx_, labels=tf.ones_like(self.dx_)))
@@ -101,21 +101,21 @@ class RoundtripModel(object):
 
         self.fake_y = tf.placeholder(tf.float32, [None, self.y_dim], name='fake_y')
         
-        self.dx = self.dx_net(self.x)
-        self.dx_onehot = self.dx_net_cat(self.x_onehot)
-        self.dy = self.dy_net(self.y)
+        self.dx = self.dx_net(tf.concat([self.x, self.x_onehot],axis=1))
+        #self.dx_onehot = self.dx_net_cat(self.x_onehot)
+        self.dy = self.dy_net(tf.concat([self.y, self.x_onehot],axis=1))
 
-        self.d_fake_x = self.dx_net(self.fake_x)
-        self.d_fake_x_onehot = self.dx_net_cat(self.fake_x_onehot)
-        self.d_fake_y = self.dy_net(self.fake_y)
+        self.d_fake_x = self.dx_net(self.fake_x_combine)
+        #self.d_fake_x_onehot = self.dx_net_cat(self.fake_x_onehot)
+        self.d_fake_y = self.dy_net(tf.concat([self.fake_y, self.x_onehot],axis=1))
 
         #-D(x)
         #self.dx_loss = tf.reduce_mean(self.dx_) - tf.reduce_mean(self.dx)
         #self.dy_loss = tf.reduce_mean(self.dy_) - tf.reduce_mean(self.dy)
         #(1-D(x))^2
         self.dx_loss = (tf.reduce_mean((0.9*tf.ones_like(self.dx) - self.dx)**2) \
-                +tf.reduce_mean((0.1*tf.ones_like(self.d_fake_x) - self.d_fake_x)**2) \
-                +tf.reduce_mean((0.1*tf.ones_like(self.d_fake_x_onehot) - self.d_fake_x_onehot)**2))/2.0
+                +tf.reduce_mean((0.1*tf.ones_like(self.d_fake_x) - self.d_fake_x)**2))/2.0 #\
+                #+tf.reduce_mean((0.1*tf.ones_like(self.d_fake_x_onehot) - self.d_fake_x_onehot)**2))/2.0
         self.dy_loss = (tf.reduce_mean((0.9*tf.ones_like(self.dy) - self.dy)**2) \
                 +tf.reduce_mean((0.1*tf.ones_like(self.d_fake_y) - self.d_fake_y)**2))/2.0
         #log(D(x))
@@ -173,7 +173,7 @@ class RoundtripModel(object):
         self.sess = tf.Session(config=run_config)
 
 
-    def train(self, epochs=30):
+    def train(self, epochs=100):
         counter = 1
         self.sess.run(tf.global_variables_initializer())
         self.summary_writer=tf.summary.FileWriter(self.graph_dir,graph=tf.get_default_graph())
@@ -219,7 +219,7 @@ class RoundtripModel(object):
                 # summary = self.sess.run(self.merged_summary,feed_dict={self.x:bx,self.y:by})
                 # self.summary_writer.add_summary(summary, counter)
 
-            if (epoch+1) % 1 == 0 or epoch+1==epochs:
+            if (epoch+1) % 10 == 0 or epoch+1==epochs:
                 self.evaluate(epoch)
                 #save model weights
                 self.save(epoch)
@@ -371,7 +371,7 @@ class RoundtripModel(object):
         return py_est
 
     def evaluate(self,epoch):
-        data_x,data_x_d, data_idx = self.x_sampler.load_all()
+        data_x, data_x_d, data_idx = self.x_sampler.load_all()
         data_y, _ = self.y_sampler.load_all()
         data_x_ = self.predict_x(data_y)
         data_y_ = self.predict_y(data_x,data_x_d)
@@ -429,13 +429,16 @@ if __name__ == '__main__':
     df = args.df
     scale = args.scale
     timestamp = args.timestamp
-    g_net = model.Generator_img(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=6,nb_units=256,dataset=data)
-    h_net = model.Encoder_img(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=6,nb_units=256,dataset=data,cond=True)
-    dx_net = model.Discriminator(input_dim=x_dim,name='dx_net',nb_layers=3,nb_units=128)
-    dx_net_cat = model.Discriminator(input_dim=nb_classes,name='dx_cat_net',nb_layers=3,nb_units=128)
-    dy_net = model.Discriminator_img(input_dim=y_dim,name='dy_net',nb_layers=3,nb_units=128,dataset=data)
+    g_net = model.Generator_img(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=2,nb_units=256,dataset=data)
+    h_net = model.Encoder_img(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=2,nb_units=256,dataset=data,cond=True)
+    dx_net = model.Discriminator(input_dim=x_dim+nb_classes,name='dx_net',nb_layers=2,nb_units=128)
+    dx_net_cat = model.Discriminator(input_dim=nb_classes,name='dx_cat_net',nb_layers=2,nb_units=128)
+    dy_net = model.Discriminator_img(input_dim=y_dim+nb_classes,name='dy_net',nb_layers=2,nb_units=128,dataset=data)
     xs = util.Mixture_sampler(nb_classes=nb_classes, N=50000,dim=x_dim,sampler='normal',scale=1)
-    ys = util.mnist_sampler()
+    if data=='mnist':
+        ys = util.mnist_sampler()
+    else:
+        ys = util.cifar10_sampler()
     pool = util.DataPool()
 
     RTM = RoundtripModel(g_net, h_net, dx_net, dx_net_cat, dy_net, xs, ys, pool, batch_size, nb_classes, alpha, beta, sd_y, df, scale)
@@ -448,8 +451,26 @@ if __name__ == '__main__':
             RTM.load(pre_trained=True)
             timestamp = 'pre-trained'
         else:
-            epoch=399
-            RTM.load(pre_trained=False, timestamp = timestamp, epoch = epoch)
             import matplotlib
             matplotlib.use('agg')
             import matplotlib.pyplot as plt
+            epoch=39
+            RTM.load(pre_trained=False, timestamp = timestamp, epoch = epoch)
+            N=25
+            data_x, data_x_d, data_idx = RTM.x_sampler.load_all()
+            pre = RTM.predict_y(data_x, data_x_d, bs=256)
+            pre = pre.reshape(pre.shape[0],28,28)
+            for ii in range(10):
+                idx = [item for item in data_idx if item==ii]
+                pre_one_class = pre[idx]
+                fig, ax = plt.subplots(nrows=5, ncols=5, sharex='all', sharey='all')
+                ax = ax.flatten()
+                for i in range(25):
+                    img = pre_one_class[i]
+                    ax[i].imshow(img,plt.cm.gray)
+                ax[0].set_xticks([])
+                ax[0].set_yticks([])
+                plt.tight_layout()  
+                plt.savefig('%s/mnist_pre_%d.png'%(RTM.save_dir,ii))
+                plt.show()
+            
