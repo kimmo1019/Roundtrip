@@ -433,7 +433,7 @@ if __name__ == '__main__':
     h_net = model.Encoder_img(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=2,nb_units=256,dataset=data,cond=True)
     dx_net = model.Discriminator(input_dim=x_dim+nb_classes,name='dx_net',nb_layers=2,nb_units=128)
     dx_net_cat = model.Discriminator(input_dim=nb_classes,name='dx_cat_net',nb_layers=2,nb_units=128)
-    dy_net = model.Discriminator_img(input_dim=y_dim+nb_classes,name='dy_net',nb_layers=2,nb_units=128,dataset=data)
+    dy_net = model.Discriminator_img(input_dim=y_dim,name='dy_net',nb_layers=2,nb_units=128,dataset=data)
     xs = util.Mixture_sampler(nb_classes=nb_classes, N=50000,dim=x_dim,sampler='normal',scale=1)
     if data=='mnist':
         ys = util.mnist_sampler()

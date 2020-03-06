@@ -7,6 +7,12 @@ def leaky_relu(x, alpha=0.2):
     #return tf.maximum(tf.minimum(0.0, alpha * x), x)
     return tf.maximum(0.0, x)
 
+def conv_cond_concat(x, y):
+    """Concatenate conditioning vector on feature map axis."""
+    x_shapes = x.get_shape()
+    y_shapes = y.get_shape()
+    return tf.concat([x , y*tf.ones([tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2] ,tf.shape(y)[3]])], 3)
+
 class Discriminator(object):
     def __init__(self, input_dim, name, nb_layers=2,nb_units=256):
         self.input_dim = input_dim
@@ -59,27 +65,43 @@ class Discriminator_img(object):
             if reuse:
                 vs.reuse_variables()
             bs = tf.shape(z)[0]
-            x = z[:,:-10]
-            y = z[:,-10:]
+            x = z[:,:self.input_dim]
+            y = z[:,self.input_dim:]
+            y.set_shape([None,10])
+            yb = tf.reshape(y, shape=[bs, 1, 1, 10])
             if self.dataset=="mnist":
                 x = tf.reshape(x, [bs, 28, 28, 1])
             elif self.dataset=="cifar10":
                 x = tf.reshape(x, [bs, 32, 32, 3])
+            x = conv_cond_concat(x,yb)
             conv = tcl.convolution2d(x, 32, [4,4],[2,2],
                 activation_fn=tf.identity
                 )
             #(bs, 14, 14, 32)
             conv = leaky_relu(conv)
+            conv = conv_cond_concat(conv,yb)
             for _ in range(self.nb_layers-1):
                 conv = tcl.convolution2d(conv, 64, [4,4],[2,2],
                     activation_fn=tf.identity
                     )
+                conv = tc.layers.batch_norm(conv)
                 conv = leaky_relu(conv)
             #(bs, 7, 7, 32)
-            conv = tcl.flatten(conv)
+            print conv
+            #fc = tf.reshape(conv, [bs, -1])
+            fc = tcl.flatten(conv)
             #(bs, 1568)
-            fc = tcl.fully_connected(conv, 128, activation_fn=tf.identity)
-            conv = tf.concat([conv,y],axis=1)
+            print fc
+            fc = tf.concat([fc, y], axis=1)
+            print fc
+            fc = tcl.fully_connected(
+                fc, 1024,
+                activation_fn=tf.identity
+                )
+            fc = tc.layers.batch_norm(fc)
+            fc = leaky_relu(fc)
+            
+            fc = tf.concat([fc,y],axis=1)
             output = tcl.fully_connected(
                 fc, 1, 
                 activation_fn=tf.identity
@@ -108,12 +130,16 @@ class Generator_img(object):
             if reuse:
                 vs.reuse_variables()
             bs = tf.shape(z)[0]
+            y = z[:,-10:]
+            yb = tf.reshape(y, shape=[bs, 1, 1, 10])
             fc = tcl.fully_connected(
                 z, 1024,
                 activation_fn=tf.identity
                 )
             fc = tc.layers.batch_norm(fc,is_training = self.is_training)#test problem may occur?
             fc = leaky_relu(fc)
+            fc = tf.concat([fc, y], 1)
+
             if self.dataset=='mnist':
                 fc = tcl.fully_connected(
                     fc, 7*7*128,
@@ -128,6 +154,8 @@ class Generator_img(object):
                 fc = tf.reshape(fc, tf.stack([bs, 8, 8, 128]))
             fc = tc.layers.batch_norm(fc,is_training = self.is_training)
             fc = leaky_relu(fc)
+            fc = conv_cond_concat(fc,yb)
+
             conv = tcl.convolution2d_transpose(
                 fc, 64, [4,4], [2,2],
                 activation_fn=tf.identity
