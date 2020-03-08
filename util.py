@@ -9,6 +9,8 @@ from scipy.stats import t, uniform, norm, truncnorm, invgamma, gamma
 from scipy import pi
 from tqdm import tqdm
 import sys
+import cPickle as pickle
+import gzip
 
 #pbmc ~68k single cell RNA-seq data
 class DataSampler(object):
@@ -64,7 +66,88 @@ class DataSampler(object):
 
     def load_all(self):
          return np.concatenate((self.X_train, self.X_test)), np.concatenate((self.y_train, self.y_test))
-        
+
+#from public dataset
+class miniboone_sampler(object):
+    def __init__(self,data_path='/home/liuqiao/software/maf/data/miniboone/data.npy'):
+        self.X = np.load(data_path)
+        self.Y=None
+        self.dim = self.X.shape[1]
+        self.nb_test = int(0.1*self.X.shape[0])
+        self.nb_train = self.X.shape[0]-self.nb_test
+        self.X_train = self.X[:-self.nb_test]
+        self.X_test = self.X[-self.nb_test:]
+        self.mean = 0
+        self.sd = 0
+    def train(self, batch_size, label = False):
+        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
+        if label:
+            return self.X_train[indx, :], self.Y[indx]
+        else:
+            return self.X_train[indx, :]
+    def load_all(self):
+        return self.X_train, None
+
+class mnist_sampler(object):
+    def __init__(self,data_path='/home/liuqiao/software/maf/data/mnist/mnist.pkl.gz'):
+        f = gzip.open(data_path, 'rb')
+        trn, val, tst = pickle.load(f)
+        self.trn_data = trn[0]
+        self.trn_label = trn[1]
+        self.trn_one_hot = np.eye(10)[self.trn_label]
+        self.tst_data = tst[0]
+        self.tst_label = tst[1]
+        self.N = self.trn_data.shape[0]
+        self.mean = 0
+        self.sd = 0
+    def train(self, batch_size, indx = None, label = False):
+        if indx is None:
+            indx = np.random.randint(low = 0, high = self.N, size = batch_size)
+        if label:
+            return self.trn_data[indx, :], self.trn_one_hot[indx]
+        else:
+            return self.trn_data[indx, :]
+    def load_all(self):
+        return self.trn_data, self.trn_label, self.trn_one_hot
+
+class cifar10_sampler(object):
+    def __init__(self,data_path='/home/liuqiao/software/maf/data/cifar10'):
+        trn_data = []
+        trn_label = []
+        for i in xrange(1, 6):
+            f = open(data_path + '/data_batch_' + str(i), 'rb')
+            dict = pickle.load(f)
+            trn_data.append(dict['data'])
+            trn_label.append(dict['labels'])
+            f.close()
+        trn_data = np.concatenate(trn_data, axis=0)
+        trn_data = trn_data.reshape(trn_data.shape[0],3,32,32)
+        trn_data = trn_data.transpose(0, 2, 3, 1)
+        trn_data = trn_data/256.0
+        self.trn_data = trn_data.reshape(trn_data.shape[0],-1)
+        self.trn_label = np.concatenate(trn_label, axis=0)
+        self.trn_one_hot = np.eye(10)[self.trn_label]
+        self.N = self.trn_data.shape[0]
+        f = open(data_path + '/test_batch', 'rb')
+        dict = pickle.load(f)
+        tst_data = dict['data']
+        tst_data = tst_data.reshape(tst_data.shape[0],3,32,32)
+        tst_data = tst_data.transpose(0, 2, 3, 1)
+        tst_data = tst_data/256.0
+        self.tst_data = tst_data.reshape(tst_data.shape[0],-1)
+        self.tst_label = np.array(dict['labels'])
+        self.mean = 0
+        self.sd = 0
+    def train(self, batch_size, indx = None, label = False):
+        if indx is None:
+            indx = np.random.randint(low = 0, high = self.N, size = batch_size)
+        if label:
+            return self.trn_data[indx, :], self.trn_one_hot[indx]
+        else:
+            return self.trn_data[indx, :]
+    def load_all(self):
+        return self.trn_data, self.trn_label, self.trn_one_hot
+
 # Gaussian mixture sampler by either given parameters or random component centers and fixed sd
 class GMM_sampler(object):
     def __init__(self, N, mean=None, n_components=None, cov=None, sd=None, dim=None, weights=None):
@@ -73,6 +156,7 @@ class GMM_sampler(object):
         self.n_components = n_components
         self.dim = dim
         self.sd = sd
+        self.weights = weights
         if mean is None:
             assert n_components is not None and dim is not None and sd is not None
             self.mean = np.random.uniform(-0.5,0.5,(self.n_components,self.dim))
@@ -155,6 +239,55 @@ class GMM_Uni_sampler(object):
     def load_all(self):
         return self.X, self.Y
 
+#each dim is a gmm
+class GMM_Uni_sampler_v2(object):
+    def __init__(self, N, sd, dim, n_components, weights=None, bound=1):
+        self.total_size = N
+        self.dim = dim
+        self.sd = sd
+        self.n_components = n_components
+        self.centers = np.linspace(-bound, bound, n_components)
+        np.random.seed(1024)
+        self.X = np.vstack([self.generate_gmm() for _ in range(dim)]).T
+        self.Y=None
+        self.mean=0
+    def generate_gmm(self,weights = None):
+        if weights is None:
+            weights = np.ones(self.n_components, dtype=np.float64) / float(self.n_components)
+        Y = np.random.choice(self.n_components, size=self.total_size, replace=True, p=weights)
+        return np.array([np.random.normal(self.centers[i],self.sd) for i in Y],dtype='float64')
+        
+    def train(self, batch_size):
+        indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
+        return self.X[indx, :]
+
+    def load_all(self):
+        return self.X, self.Y
+
+
+#Gaussian + uniform distribution
+class Gaus_Uni_sampler(object):
+    def __init__(self, N, mean, sd, norm_dim=1,uni_dim=1):
+        self.total_size = N
+        self.mean = mean
+        self.norm_dim = norm_dim
+        self.uni_dim = uni_dim
+        self.sd = sd
+        np.random.seed(1024)
+        self.X_normal = np.random.normal(self.mean, self.sd, (self.total_size,self.norm_dim))
+        self.X_uni = np.random.uniform(-1,1,(self.total_size,self.uni_dim))
+        self.X = np.hstack((self.X_normal,self.X_uni))
+        self.Y=None
+        
+    def train(self, batch_size):
+        indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
+        return self.X[indx, :]
+
+    def load_all(self):
+        return self.X, self.Y
+
+
+
 class Uniform_sampler(object):
     def __init__(self, N, dim, mean):
         self.total_size = N
@@ -198,28 +331,30 @@ class Gaussian_sampler(object):
 
 #sample continuous (Gaussian) and discrete (Catagory) latent variables together
 class Mixture_sampler(object):
-    def __init__(self, nb_classes, N, dim, sampler='normal',scale=0.1):
+    def __init__(self, nb_classes, N, dim, sampler='normal',scale=1):
         self.nb_classes = nb_classes
         self.total_size = N
         self.dim = dim
         self.scale = scale
         np.random.seed(1024)
         self.X_c = self.scale*np.random.normal(0, 1, (self.total_size,self.dim))
+        #self.X_c = self.scale*np.random.uniform(-1, 1, (self.total_size,self.dim))
         self.label_idx = np.random.randint(low = 0 , high = self.nb_classes, size = self.total_size)
         self.X_d = np.eye(self.nb_classes)[self.label_idx]
         self.X = np.hstack((self.X_c,self.X_d))
 
     def train(self, batch_size, label = False):
         indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
-        return self.X_c[indx, :], self.X_d[indx, :]
+        return self.X_c[indx, :],self.X_d[indx, :],indx
     
     def get_batch(self,batch_size,weights=None):
         X_batch_c = self.scale*np.random.normal(0, 1, (batch_size,self.dim))
+        #X_batch_c = self.scale*np.random.uniform(-1, 1, (batch_size,self.dim))
         if weights is None:
             weights = np.ones(self.nb_classes, dtype=np.float64) / float(self.nb_classes)
         label_batch_idx =  np.random.choice(self.nb_classes, size=batch_size, replace=True, p=weights)
         X_batch_d = np.eye(self.nb_classes)[label_batch_idx]
-        return X_batch_c, X_batch_d
+        return X_batch_c,X_batch_d,label_batch_idx
 
     def load_all(self):
         return self.X_c, self.X_d, self.label_idx
@@ -305,13 +440,12 @@ class DataPool(object):
             self.nb_batch += 1
             return data
         if np.random.rand() > 0.5:
-            idx = int(np.random.rand()*self.maxsize)
-            tmp1 = copy.copy(self.pool[idx])[0]
-            self.pool[idx][0] = data[0]
-            idx = int(np.random.rand()*self.maxsize)
-            tmp2 = copy.copy(self.pool[idx])[1]
-            self.pool[idx][1] = data[1]
-            return [tmp1, tmp2]
+            results=[]
+            for i in range(len(data)):
+                idx = int(np.random.rand()*self.maxsize)
+                results.append(copy.copy(self.pool[idx])[i])
+                self.pool[idx][i] = data[i]
+            return results
         else:
             return data
 
@@ -464,7 +598,7 @@ class SV_sampler(object):#stochastic volatility model
 #     omega ~ Unif(0, 0.1)
 #     logsigma ~ N (0, 1)
 class Cosine_sampler(object):
-    def __init__(self, omega=1./10,sigma=0.1,iteration=10,block_size=10):
+    def __init__(self, omega=1./10,sigma=0.3,iteration=10,block_size=10):
         self.omega = omega
         self.sigma = sigma
         self.block_size = block_size
@@ -532,7 +666,7 @@ class Cosine_sampler(object):
         data = np.empty((sample_size, self.block_size), dtype=np.float64)
         if prior is None:
             params[:, 0] = np.random.normal(size=sample_size)
-            params[:, 1] = np.random.uniform(low=-np.pi, high=np.pi, size=sample_size)
+            params[:, 1] = np.random.uniform(low=-2*np.pi, high=2*np.pi, size=sample_size)
         else:
             params[:,:2] = prior
         #params[0,:2] = [np.log(2),np.pi / 4]# (0.69, 0.78)
@@ -549,53 +683,239 @@ class Cosine_sampler(object):
             data[i,:] = A[i] * np.cos(2 * np.pi * self.omega * t + phi[i]) + self.sigma * np.random.normal(size=self.block_size)
         return data, params, t
 
-    def get_posterior(self, data, t, res = 100):
-        #get the truth params
-        _,params,_ = self.generate_data3(1,0,self.block_size)
-        logA, phi = params[0,:]
+    #calculate likelihood
+    def cal_bayesian_likelihood(self, data, t, params_list,use_log=True):
+        if len(params_list.shape) == 1:
+            logA, phi = params_list[0], params_list[1]
+            A = np.exp(logA)
+            log_likelyhood = -np.sum((data-A*np.cos(2*np.pi * self.omega *t+phi))**2) / (2*self.sigma**2)
+        else:
+            logA, phi = params_list
+            A = np.exp(logA)
+            log_params_prior=  -logA**2/2
+            log_likelyhood = np.array([-np.sum((data-A_*np.cos(2*np.pi * self.omega *t+phi_))**2) / (2*self.sigma**2) \
+                for A_, phi_ in zip(A, phi)])
+        if use_log:
+            return log_likelyhood
+        else:
+            return np.exp(log_likelyhood)
 
-        #calculate posterior using bayesian formula
-        def cal_bayesian_posterior(data,t,params_list,use_log=True):
+    #calculate posterior using bayesian formula
+    def cal_bayesian_posterior(self, data, t, params_list,use_log=True):
+        if len(params_list.shape) == 1:
+            logA, phi = params_list[0], params_list[1]
+            A = np.exp(logA)
+            log_params_prior = -logA**2/2
+            log_likelyhood = -np.sum((data-A*np.cos(2*np.pi * self.omega *t+phi))**2) / (2*self.sigma**2)
+        else:
             logA, phi = params_list
             A = np.exp(logA)
             log_params_prior = -logA**2/2
             log_likelyhood = np.array([-np.sum((data-A_*np.cos(2*np.pi * self.omega *t+phi_))**2) / (2*self.sigma**2) \
                 for A_, phi_ in zip(A, phi)])
-            if use_log:
-                return log_params_prior+log_likelyhood
-            else:
-                return np.exp(log_params_prior+log_likelyhood)
+        if use_log:
+            return log_params_prior+log_likelyhood
+        else:
+            return np.exp(log_params_prior+log_likelyhood)
 
-        #sample theta by Metroplis-Hasting algorithm 
-        def sample_posterior(data, t, sample_size=1000, chain_len=500, seed=0):
-            np.random.seed(seed)
+    #sample theta by Metroplis-Hasting algorithm, random Gaussian walk
+    def sample_posterior(self, data, params, t, sample_size=1000, chain_len=500, sd=0.1, seed=0):
+        np.random.seed(seed)
+        if params is None:
             para_temp = np.zeros((2, sample_size), dtype=np.float64)
             #starting states of Markov Chain
             para_temp[0, :] = 0 # logA
             para_temp[1, :] = 0  #phi
+        else:
+            para_temp = copy.copy(params).T
+            sample_size = params.shape[0]
+        for _ in tqdm(range(chain_len)):
+            para_propose = para_temp + np.random.normal(scale=sd, size=(2, sample_size))
+            #para_propose[0, :] %= 0.1
+            para_propose[1, :] += 2*np.pi
+            para_propose[1, :] %= (4 * np.pi)
+            para_propose[1, :] -= 2*np.pi
+            #para_propose[1, :] = para_propose[1, :]%(2 * np.pi)-np.pi 
 
-            for _ in tqdm(range(chain_len)):
-                para_propose = para_temp + np.random.normal(scale=0.1, size=(2, sample_size))
-                #para_propose[0, :] %= 0.1
-                para_propose[1, :] += 2*np.pi
-                para_propose[1, :] %= (4 * np.pi)
-                para_propose[1, :] -= 2*np.pi
-                #para_propose[1, :] = para_propose[1, :]%(2 * np.pi)-np.pi 
-                mask = cal_bayesian_posterior(data, t, para_propose) > np.log(np.random.uniform(size=sample_size)) \
-                    + cal_bayesian_posterior(data, t, para_temp)
-                para_temp[:, mask] = para_propose[:, mask]
-            return para_temp.T
+            mask = self.cal_bayesian_posterior(data, t, para_propose) > np.log(np.random.uniform(size=sample_size)) \
+                + self.cal_bayesian_posterior(data, t, para_temp)
+            para_temp[:, mask] = para_propose[:, mask]
+        return para_temp.T
 
-        logA_axis = np.linspace(logA-2,logA+2,res)
-        phi_axis = np.linspace(phi-3*np.pi,phi+np.pi,res)
+    #plot posterior of both gruth truth(2D) and sampled theta
+    def get_posterior(self, data, t, res = 100):
+        #get the truth params
+        _,params,_ = self.generate_data3(1,0,self.block_size)
+        logA, phi = params[0,:]
+        logA_axis = np.linspace(logA-1,logA+1,res)
+        phi_axis = np.linspace(phi-1,phi+1,res)
         X,Y = np.meshgrid(logA_axis,phi_axis)
         params_stacks = np.vstack([X.ravel(), Y.ravel()]) #shape (2, N*N)
         #log_posterior_list = map(cal_beyesian_posterior,theta_list)
-        bayesian_posterior_stacks = cal_bayesian_posterior(data, t, params_stacks)
+        bayesian_posterior_stacks = self.cal_bayesian_posterior(data, t, params_stacks)
         bayesian_posterior_mat = np.reshape(bayesian_posterior_stacks,(len(phi_axis),len(logA_axis)))
-        params_sampled = sample_posterior(data,t)
+        params_sampled = self.sample_posterior(data,None,t)
         return bayesian_posterior_mat, logA_axis, phi_axis, params_sampled
+    
+    #MCMC refinement
+    def refine_posterior(self, data, params, t, chain_len=50, seed=0):
+        np.random.seed(seed)
+        #starting states of Markov Chain
+        para_temp = params.T
+        for _ in tqdm(range(chain_len)):
+            para_propose = para_temp + np.random.normal(scale=0.1, size=para_temp.shape)
+            #para_propose[0, :] %= 0.1
+            para_propose[1, :] += 2*np.pi
+            para_propose[1, :] %= (4 * np.pi)
+            para_propose[1, :] -= 2*np.pi
+            #para_propose[1, :] = para_propose[1, :]%(2 * np.pi)-np.pi 
+            mask = self.cal_bayesian_posterior(data, t, para_propose) > np.log(np.random.uniform(size=para_temp.shape[1])) \
+                + self.cal_bayesian_posterior(data, t, para_temp)
+            para_temp[:, mask] = para_propose[:, mask]
+        return para_temp.T
+    #MCMC resampling with N chains and get the last data point
+    def resampling(self, data, params, t, chain_len=100, seed=0):
+        np.random.seed(seed)
+        #t,data: time and data of a minibatch, e.g., (10,)
+        #params: params set as proposals
+        para_propose_set = copy.copy(params)
+        para_temp = params.T
+        for _ in tqdm(range(chain_len)):
+            label_batch_idx =  np.random.choice(len(para_propose_set), size=len(para_propose_set), replace=True)
+            para_propose = para_propose_set[label_batch_idx].T
+            mask = self.cal_bayesian_likelihood(data, t, para_propose) > np.log(np.random.uniform(size=para_temp.shape[1])) \
+                + self.cal_bayesian_likelihood(data, t, para_temp)
+            para_temp[:, mask] = para_propose[:, mask]
+        return para_temp.T
 
+    #MCMC resampling with 1 chain and get the last N data points
+    def resampling_v2(self, data, params, t, chain_len=10000, seed=0):
+        np.random.seed(seed)
+        #t,data: time and data of a minibatch, e.g., (10,)
+        #params: params set as proposals
+        a = copy.copy(params)
+        para_propose_set = copy.copy(params)
+        para_sampled = np.zeros(params.shape)
+        para_temp = params[0,:]
+        for i in tqdm(range(chain_len+len(para_propose_set)*10)):
+            label_batch_idx =  np.random.choice(len(para_propose_set))
+            para_propose = para_propose_set[label_batch_idx,:]
+            #print(self.cal_bayesian_likelihood(data, t, para_propose))
+            #print(self.cal_bayesian_likelihood(data, t, para_temp))
+            if self.cal_bayesian_likelihood(data, t, para_propose) > np.log(np.random.uniform()) \
+                + self.cal_bayesian_likelihood(data, t, para_temp):
+                para_temp = para_propose
+            if i >= chain_len and i%10==0:
+                para_sampled[int((i-chain_len)/10),:] = para_temp
+        return para_sampled
+
+    #directly sample with multinomial distribution using likelihood as weights
+    def resampling_v3(self, data, params, t, chain_len=10000, seed=0):
+        np.random.seed(seed)
+        #t,data: time and data of a minibatch, e.g., (10,)
+        #params: params set as proposals
+        para_propose_set = copy.copy(params)
+        log_likelihood = self.cal_bayesian_likelihood(data, t, params.T)
+        likelihood = np.exp(log_likelihood)
+        likelihood /= np.sum(likelihood)
+        sampled_idx = np.random.choice(len(params),size=len(params),replace=True,p=likelihood)
+        return para_propose_set[sampled_idx]
+
+    #adaptive mh 
+    def adaptive_sampling(self, data, params, t, chain_len=1000, bound=0.2, seed=2):
+        np.random.seed(seed)
+        #t,data: time and data 
+        #params: params set as proposals
+        para_propose_set = copy.copy(params)
+        sample_size,param_size = params.shape
+        para_sampled = np.zeros(params.shape)
+        params_sorted = np.zeros(params.shape)
+        para_temp = para_propose_set[0,:]
+        temp_idx = 0
+        adjacent_list = [[] for _ in range(sample_size)]
+        #params with shape (N,m)
+        order_idx = [[] for _ in range(param_size)]
+        dic_order_idx = [{} for _ in range(param_size)]
+        for i in range(param_size):
+            params_with_idx = np.vstack([params[:,i],np.arange(sample_size)]).T
+            params_with_idx = np.array(sorted(params_with_idx,key=lambda a:a[0]))
+            params_sorted[:,i] = params_with_idx[:,0]
+            order_idx[i] = list(params_with_idx[:,1])
+            dic_order_idx[i] = {item[0]:item[1] for item in zip(order_idx[i],np.arange(sample_size))}
+        #calculate proposal point density 
+        def cal_proposal_density(param,idx):
+            neighbor_list=[]
+            for i in range(param_size):
+                param_ith_idx = dic_order_idx[i][idx]
+                left_idx, right_idx = find_inserted_idx(params_sorted[:,i],param[i],param_ith_idx)
+                neighbor_list.append(order_idx[i][left_idx:right_idx])
+            return len(set(neighbor_list[0]).intersection(*neighbor_list[1:]))
+        def find_inserted_idx(array,value,idx):
+            left_idx,right_idx = 0,len(array)
+            isleftbreak=0
+            for i in range(idx,len(array)):
+                if value+bound < array[i]:
+                    right_idx = i
+                    break
+            for i in range(idx,-1,-1):
+                if value-bound > array[i]:
+                    left_idx = i
+                    isleftbreak = 1
+                    break
+            if isleftbreak:
+                left_idx+=1
+            return left_idx,right_idx
+
+        def cal_proposal_density_v2(param,idx):
+            neighbor_list=[]
+            for i in range(param_size):
+                param_ith_idx = dic_order_idx[i][idx]
+                left_idx, right_idx = find_inserted_idx_v2(params_sorted[:,i],param[i],param_ith_idx)
+                neighbor_list.append(order_idx[i][left_idx:right_idx])
+            return len(set(neighbor_list[0]).intersection(*neighbor_list[1:]))
+        #find idx with binary division search
+        def find_inserted_idx_v2(param_array,value,idx):
+            def binary_search(value,array):
+                if len(array)==0:
+                    return 0
+                if value>array[-1]:
+                    return len(array)
+                Min, Max = 0, len(array)-1
+                while Min<=Max:
+                    mid = int((Min+Max)/2)
+                    if array[mid]<value:
+                        Min = mid + 1
+                    elif array[mid]>value:
+                        Max = mid - 1
+                    else:
+                        return mid
+                return Min
+
+            right_idx = binary_search(value+bound,param_array[idx:])
+            left_idx = binary_search(value-bound,param_array[:idx])
+            return left_idx, idx+right_idx
+
+        #neighboring points as the unnormalized density
+        def mixture_square_density(points,point,idx):
+            nb=0
+            for i in adjacent_list[idx]:
+                neighbor_point = points[i]
+                if np.sum(abs(neighbor_point-point) <= bound) == points.shape[1]:
+                    nb+=1
+            return nb
+
+        for i in tqdm(range(chain_len+len(para_propose_set)*5)):
+            mixture_idx =  np.random.choice(len(para_propose_set))
+            para_propose = para_propose_set[mixture_idx,:] + np.random.uniform(-bound,bound,size=(2,))
+
+            if self.cal_bayesian_posterior(data, t, para_propose) + np.log(cal_proposal_density_v2(para_temp,temp_idx)) > \
+                + self.cal_bayesian_posterior(data, t, para_temp) + np.log(cal_proposal_density_v2(para_propose,mixture_idx)) \
+                + np.log(np.random.uniform()):
+                para_temp = para_propose
+                temp_idx = mixture_idx
+            if i >= chain_len and i%5==0:
+                para_sampled[int((i-chain_len)/5),:] = para_temp
+        return para_sampled
 
 
 if __name__=='__main__':
@@ -606,18 +926,31 @@ if __name__=='__main__':
     matplotlib.use('agg')
     import matplotlib.pyplot as plt
     import seaborn as sns
+    import random
+    a=[]
+    b=[1,2,3]
+    a.append(b)
+    a.append(b)
+    c = np.stack(a).mean(axis=1)
+    print np.where(np.array(b)==max(b))[0]
 
-    s = Cosine_sampler(block_size=10)
+    sys.exit()
     data_list,t_list=[],[]
+    s = Cosine_sampler(block_size=10)
     for i in range(10):
-        print len(data_list),len(t_list)
         if i==0:
-            data, theta, t = s.generate_data3(100000,i)
+            data, theta, t = s.generate_data3(1000,i)
         else:
-            data, theta, t = s.generate_data3(100000,i,prior=theta)
+            data, theta, t = s.generate_data3(100,i,prior=theta)
         data_list.append(data[0,:])
         t_list.append(t)
-        log_prob,axis_x,axis_y,sampled_theta = s.get_posterior(np.concatenate(data_list,axis=0),np.concatenate(t_list,axis=0))
+        #log_prob,axis_x,axis_y,sampled_theta = s.get_posterior(np.concatenate(data_list,axis=0),np.concatenate(t_list,axis=0))
+        #theta_refine = s.refine_posterior(np.concatenate(data_list,axis=0),theta,np.concatenate(t_list,axis=0))
+        theta = np.random.uniform(0,0.2,size=theta.shape)
+        theta_resample = s.adaptive_sampling(data[0,:],theta,t,chain_len=10000)
+
+        print theta_resample.shape
+        sys.exit()
         fig, ax = plt.subplots(1, 2)
         ax[0].hist(sampled_theta[:,0], bins=30,alpha=0.75)
         ax[1].hist(sampled_theta[:,1], bins=30,alpha=0.75)
