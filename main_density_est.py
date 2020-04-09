@@ -827,8 +827,6 @@ if __name__ == '__main__':
             py_true = map(cal_pdf,y_val,[gmm_mean]*len(y_val))
             mle=[]
             for sd in np.linspace(start,end,nb_intervals):
-            #for sd in [0.757]:
-                #for scale in np.linspace(0.2,2,10):
                 for scale in [0.5]:
                     py_est = RTM.estimate_py_with_IS(y_val,2999,sd_y=sd,scale=scale,sample_size=10000,save=False)
                     print 'RTM', sd,scale, pearsonr(py_true,py_est)[0]
