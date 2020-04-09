@@ -9,6 +9,9 @@ from scipy.stats import t, uniform, norm, truncnorm, invgamma, gamma
 from scipy import pi
 from tqdm import tqdm
 import sys
+import pandas as pd
+from os.path import join
+from collections import Counter
 import cPickle as pickle
 import gzip
 
@@ -67,18 +70,221 @@ class DataSampler(object):
     def load_all(self):
          return np.concatenate((self.X_train, self.X_test)), np.concatenate((self.y_train, self.y_test))
 
-#from public dataset
-class miniboone_sampler(object):
-    def __init__(self,data_path='/home/liuqiao/software/maf/data/miniboone/data.npy'):
-        self.X = np.load(data_path)
+#outliner dataset (http://odds.cs.stonybrook.edu/)
+class Outliner_sampler(object):
+    def __init__(self,data_path='datasets/Outliner/Shuttle/data.npz'):
+        data_dic = np.load(data_path)
+        self.X_train, self.X_val,self.X_test,self.label_test = self.normalize(data_dic)
         self.Y=None
-        self.dim = self.X.shape[1]
-        self.nb_test = int(0.1*self.X.shape[0])
-        self.nb_train = self.X.shape[0]-self.nb_test
-        self.X_train = self.X[:-self.nb_test]
-        self.X_test = self.X[-self.nb_test:]
+        self.nb_train = self.X_train.shape[0]
         self.mean = 0
         self.sd = 0
+    def normalize(self,data_dic):
+        data = data_dic['arr_0']
+        label = data_dic['arr_1']
+        N_test = int(0.1*data.shape[0])
+        data_test = data[-N_test:]
+        label_test = label[-N_test:]
+        data = data[0:-N_test]
+        N_validate = int(0.1*data.shape[0])
+        data_validate = data[-N_validate:]
+        data_train = data[0:-N_validate]
+        data = np.vstack((data_train, data_validate))
+        return data_train, data_validate, data_test, label_test
+    def train(self, batch_size, label = False):
+        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
+        if label:
+            return self.X_train[indx, :], self.Y[indx]
+        else:
+            return self.X_train[indx, :]
+    def load_all(self):
+        return self.X_train, None
+
+
+#UCI dataset
+class UCI_sampler(object):
+    def __init__(self,data_path='datasets/AReM/data.npy'):
+        data = np.load(data_path)
+        self.X_train, self.X_val,self.X_test = self.normalize(data)
+        self.Y=None
+        self.nb_train = self.X_train.shape[0]
+        self.mean = 0
+        self.sd = 0
+    def normalize(self,data):
+        rng = np.random.RandomState(42)
+        rng.shuffle(data)
+        N_test = int(0.1*data.shape[0])
+        data_test = data[-N_test:]
+        data = data[0:-N_test]
+        N_validate = int(0.1*data.shape[0])
+        data_validate = data[-N_validate:]
+        data_train = data[0:-N_validate]
+        data = np.vstack((data_train, data_validate))
+        return data_train, data_validate, data_test
+    def train(self, batch_size, label = False):
+        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
+        if label:
+            return self.X_train[indx, :], self.Y[indx]
+        else:
+            return self.X_train[indx, :]
+    def load_all(self):
+        return self.X_train, None
+
+#miniboone dataset
+class miniboone_sampler(object):
+    def __init__(self,data_path='/home/liuqiao/software/maf/data/miniboone/data.npy'):
+        data = np.load(data_path)
+        self.X_train, self.X_val,self.X_test = self.normalize(data)
+        self.Y=None
+        self.nb_train = self.X_train.shape[0]
+        self.mean = 0
+        self.sd = 0
+    def normalize(self,data):
+        N_test = int(0.1*data.shape[0])
+        data_test = data[-N_test:]
+        data = data[0:-N_test]
+        N_validate = int(0.1*data.shape[0])
+        data_validate = data[-N_validate:]
+        data_train = data[0:-N_validate]
+        data = np.vstack((data_train, data_validate))
+        mu = data.mean(axis=0)
+        s = data.std(axis=0)
+        data_train = (data_train - mu)/s
+        data_validate = (data_validate - mu)/s
+        data_test = (data_test - mu)/s
+        return data_train, data_validate, data_test
+    def train(self, batch_size, label = False):
+        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
+        if label:
+            return self.X_train[indx, :], self.Y[indx]
+        else:
+            return self.X_train[indx, :]
+    def load_all(self):
+        return self.X_train, None
+#power dataset
+class power_sampler(object):
+    def __init__(self,data_path='/home/liuqiao/software/maf/data/power/data.npy'):
+        data = np.load(data_path)
+        self.X_train, self.X_val,self.X_test = self.normalize(data)
+        self.nb_train = self.X_train.shape[0]
+        self.Y=None
+        self.mean = 0
+        self.sd = 0
+    def normalize(self,data):
+        rng = np.random.RandomState(42)
+        rng.shuffle(data)
+        N = data.shape[0]
+        data = np.delete(data, 3, axis=1)
+        data = np.delete(data, 1, axis=1)
+        voltage_noise = 0.01*rng.rand(N, 1)
+        gap_noise = 0.001*rng.rand(N, 1)
+        sm_noise = rng.rand(N, 3)
+        time_noise = np.zeros((N, 1))
+        noise = np.hstack((gap_noise, voltage_noise, sm_noise, time_noise))
+        data = data + noise
+        N_test = int(0.1*data.shape[0])
+        data_test = data[-N_test:]
+        data = data[0:-N_test]
+        N_validate = int(0.1*data.shape[0])
+        data_validate = data[-N_validate:]
+        data_train = data[0:-N_validate]
+        data = np.vstack((data_train, data_validate))
+        mu = data.mean(axis=0)
+        s = data.std(axis=0)
+        data_train = (data_train - mu)/s
+        data_validate = (data_validate - mu)/s
+        data_test = (data_test - mu)/s
+        return data_train, data_validate, data_test
+    def train(self, batch_size, label = False):
+        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
+        if label:
+            return self.X_train[indx, :], self.Y[indx]
+        else:
+            return self.X_train[indx, :]
+    def load_all(self):
+        return self.X_train, None
+
+#power dataset
+class gas_sampler(object):
+    def __init__(self,data_path='/home/liuqiao/software/maf/data/gas/ethylene_CO.pickle'):
+        data = pd.read_pickle(data_path)
+        self.X_train, self.X_val,self.X_test = self.normalize(data)
+        self.nb_train = self.X_train.shape[0]
+        self.Y=None
+        self.mean = 0
+        self.sd = 0
+    def normalize(self,data):
+        data.drop("Meth", axis=1, inplace=True)
+        data.drop("Eth", axis=1, inplace=True)
+        data.drop("Time", axis=1, inplace=True)
+        C = data.corr()
+        A = C > 0.98
+        B = A.as_matrix().sum(axis=1)
+        while np.any(B > 1):
+            col_to_remove = np.where(B > 1)[0][0]
+            col_name = data.columns[col_to_remove]
+            data.drop(col_name, axis=1, inplace=True)
+            C = data.corr()
+            A = C > 0.98
+            B = A.as_matrix().sum(axis=1)
+        data = (data-data.mean())/data.std()
+        data = data.as_matrix()
+        N_test = int(0.1*data.shape[0])
+        data_test = data[-N_test:]
+        data_train = data[0:-N_test]
+        N_validate = int(0.1*data_train.shape[0])
+        data_validate = data_train[-N_validate:]
+        data_train = data_train[0:-N_validate]
+        return data_train, data_validate, data_test
+
+    def train(self, batch_size, label = False):
+        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
+        if label:
+            return self.X_train[indx, :], self.Y[indx]
+        else:
+            return self.X_train[indx, :]
+    def load_all(self):
+        return self.X_train, None
+
+#HEPMASS dataset
+class hepmass_sampler(object):
+    def __init__(self,data_path='/home/liuqiao/software/maf/data/hepmass/'):
+        self.X_train, self.X_val,self.X_test = self.normalize(data_path)
+        self.Y=None
+        self.nb_train = self.X_train.shape[0]
+        self.mean = 0
+        self.sd = 0
+    def normalize(self,data_path):
+        data_train = pd.read_csv(filepath_or_buffer=join(data_path, "1000_train.csv"), index_col=False)
+        data_test = pd.read_csv(filepath_or_buffer=join(data_path, "1000_test.csv"), index_col=False)
+        data_train = data_train[data_train[data_train.columns[0]] == 1]
+        data_train = data_train.drop(data_train.columns[0], axis=1)
+        data_test = data_test[data_test[data_test.columns[0]] == 1]
+        data_test = data_test.drop(data_test.columns[0], axis=1)
+        # Because the data set is messed up!
+        data_test = data_test.drop(data_test.columns[-1], axis=1)
+        mu = data_train.mean()
+        s = data_train.std()
+        data_train = (data_train - mu)/s
+        data_test = (data_test - mu)/s
+        data_train, data_test = data_train.as_matrix(), data_test.as_matrix()
+        i = 0
+        # Remove any features that have too many re-occurring real values.
+        features_to_remove = []
+        for feature in data_train.T:
+            c = Counter(feature)
+            max_count = np.array([v for k, v in sorted(c.iteritems())])[0]
+            if max_count > 5:
+                features_to_remove.append(i)
+            i += 1
+        data_train = data_train[:, np.array([i for i in range(data_train.shape[1]) if i not in features_to_remove])]
+        data_test = data_test[:, np.array([i for i in range(data_test.shape[1]) if i not in features_to_remove])]
+
+        N = data_train.shape[0]
+        N_validate = int(N*0.1)
+        data_validate = data_train[-N_validate:]
+        data_train = data_train[0:-N_validate]
+        return data_train, data_validate, data_test
     def train(self, batch_size, label = False):
         indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
         if label:
@@ -159,7 +365,8 @@ class GMM_sampler(object):
         self.weights = weights
         if mean is None:
             assert n_components is not None and dim is not None and sd is not None
-            self.mean = np.random.uniform(-0.5,0.5,(self.n_components,self.dim))
+            #self.mean = np.random.uniform(-0.5,0.5,(self.n_components,self.dim))
+            self.mean = np.random.uniform(-5,5,(self.n_components,self.dim))
         else:
             assert cov is not None    
             self.mean = mean
@@ -173,35 +380,56 @@ class GMM_sampler(object):
             self.X = np.array([np.random.normal(self.mean[i],scale=self.sd) for i in self.Y],dtype='float64')
         else:
             self.X = np.array([np.random.multivariate_normal(mean=self.mean[i],cov=self.cov[i]) for i in self.Y],dtype='float64')
+        self.X_train, self.X_val,self.X_test = self.split(self.X)
+
+    def split(self,data):
+        #N_test = int(0.1*data.shape[0])
+        N_test = 2000
+        data_test = data[-N_test:]
+        data = data[0:-N_test]
+        #N_validate = int(0.1*data.shape[0])
+        N_validate = 2000
+        data_validate = data[-N_validate:]
+        data_train = data[0:-N_validate]
+        data = np.vstack((data_train, data_validate))
+        return data_train, data_validate, data_test
 
     def train(self, batch_size, label = False):
-        indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
+        indx = np.random.randint(low = 0, high = len(self.X_train), size = batch_size)
         if label:
-            return self.X[indx, :], self.Y[indx]
+            return self.X_train[indx, :], self.Y[indx]
         else:
-            return self.X[indx, :]
-    def resample(self,nb_sample):
-        Y = np.random.choice(self.n_components, size=nb_sample, replace=True, p=self.weights)
-        try:
-            X = np.array([np.random.multivariate_normal(mean=self.mean[i],cov=self.cov[i]) for i in Y],dtype='float64')
-        except AttributeError:
-            X = np.array([np.random.normal(self.mean[i],scale=self.sd) for i in Y],dtype='float64')
-        return X,Y
+            return self.X_train[indx, :]
+
     def load_all(self):
         return self.X, self.Y
 
 #Swiss roll (r*sin(scale*r),r*cos(scale*r)) + Gaussian noise
 class Swiss_roll_sampler(object):
-    def __init__(self, N, theta=2*np.pi, scale=2, sigma=0.2):
+    def __init__(self, N, theta=2*np.pi, scale=2, sigma=0.4):
+        np.random.seed(1024)
         self.total_size = N
         self.theta = theta
         self.scale = scale
         self.sigma = sigma
-        np.random.seed(1024)
         params = np.linspace(0,self.theta,self.total_size)
         self.X_center = np.vstack((params*np.sin(scale*params),params*np.cos(scale*params)))
         self.X = self.X_center.T + np.random.normal(0,sigma,size=(self.total_size,2))
+        np.random.shuffle(self.X)
+        self.X_train, self.X_val,self.X_test = self.split(self.X)
         self.Y = None
+        self.mean = 0
+        self.sd = 0
+
+    def split(self,data):
+        N_test = int(0.1*data.shape[0])
+        data_test = data[-N_test:]
+        data = data[0:-N_test]
+        N_validate = int(0.1*data.shape[0])
+        data_validate = data[-N_validate:]
+        data_train = data[0:-N_validate]
+        data = np.vstack((data_train, data_validate))
+        return data_train, data_validate, data_test
         
     def train(self, batch_size, label = False):
         indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
@@ -210,7 +438,7 @@ class Swiss_roll_sampler(object):
     def load_all(self):
         return self.X, self.Y
 
-#Gaussian mixture + uniform distribution
+#Gaussian mixture + normal + uniform distribution
 class GMM_Uni_sampler(object):
     def __init__(self, N, mean, cov, norm_dim=2,uni_dim=10,weights=None):
         self.total_size = N
@@ -240,15 +468,17 @@ class GMM_Uni_sampler(object):
         return self.X, self.Y
 
 #each dim is a gmm
-class GMM_Uni_sampler_v2(object):
+class GMM_indep_sampler(object):
     def __init__(self, N, sd, dim, n_components, weights=None, bound=1):
+        np.random.seed(1024)
         self.total_size = N
         self.dim = dim
         self.sd = sd
         self.n_components = n_components
         self.centers = np.linspace(-bound, bound, n_components)
-        np.random.seed(1024)
         self.X = np.vstack([self.generate_gmm() for _ in range(dim)]).T
+        self.X_train, self.X_val,self.X_test = self.split(self.X)
+        self.nb_train = self.X_train.shape[0]
         self.Y=None
         self.mean=0
     def generate_gmm(self,weights = None):
@@ -256,36 +486,85 @@ class GMM_Uni_sampler_v2(object):
             weights = np.ones(self.n_components, dtype=np.float64) / float(self.n_components)
         Y = np.random.choice(self.n_components, size=self.total_size, replace=True, p=weights)
         return np.array([np.random.normal(self.centers[i],self.sd) for i in Y],dtype='float64')
-        
+    def split(self,data):
+        #N_test = int(0.1*data.shape[0])
+        N_test = 2000
+        data_test = data[-N_test:]
+        data = data[0:-N_test]
+        #N_validate = int(0.1*data.shape[0])
+        N_validate = 2000
+        data_validate = data[-N_validate:]
+        data_train = data[0:-N_validate]
+        data = np.vstack((data_train, data_validate))
+        return data_train, data_validate, data_test
+
     def train(self, batch_size):
-        indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
-        return self.X[indx, :]
+        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
+        return self.X_train[indx, :]
 
     def load_all(self):
         return self.X, self.Y
 
 
 #Gaussian + uniform distribution
-class Gaus_Uni_sampler(object):
-    def __init__(self, N, mean, sd, norm_dim=1,uni_dim=1):
-        self.total_size = N
-        self.mean = mean
-        self.norm_dim = norm_dim
-        self.uni_dim = uni_dim
-        self.sd = sd
+class Multi_dis_sampler(object):
+    def __init__(self, N, dim):
         np.random.seed(1024)
-        self.X_normal = np.random.normal(self.mean, self.sd, (self.total_size,self.norm_dim))
-        self.X_uni = np.random.uniform(-1,1,(self.total_size,self.uni_dim))
-        self.X = np.hstack((self.X_normal,self.X_uni))
-        self.Y=None
+        self.total_size = N
+        self.dim = dim
+        assert dim >= 5
+        #first two dims are GMM
+        self.mean = np.array([[0.2,0.3],[0.7,0.8]])
+        self.cov = [0.1**2*np.eye(2),0.1**2*np.eye(2)]
+        comp_idx = np.random.choice(2, size=self.total_size, replace=True)
+        self.X_gmm = np.array([np.random.multivariate_normal(mean=self.mean[i],cov=self.cov[i]) for i in comp_idx],dtype='float64')
+        #dim 3 is a normal
+        self.X_gau = np.random.normal(0.5, 0.1, size=(self.total_size,1))
+        #dim 4 is a uniform
+        self.X_uni = np.random.uniform(0,1,size=(self.total_size,1))
+        #dim >=5 is a GMM for each dim
+        self.centers=np.array([0.2,0.6])
+        self.sd = np.array([0.1,0.05])
+        self.X_indep_gmm = np.vstack([self.generate_gmm(self.centers,self.sd) for _ in range(dim-4)]).T
+        self.X = np.hstack((self.X_gmm,self.X_gau,self.X_uni,self.X_indep_gmm))
+        self.X_train, self.X_val,self.X_test = self.split(self.X)
+    def generate_gmm(self,centers,sd):
+            Y = np.random.choice(2, size=self.total_size, replace=True)
+            return np.array([np.random.normal(centers[i],sd[i]) for i in Y],dtype='float64')
+        
+    def split(self,data):
+        N_test = int(0.1*data.shape[0])
+        data_test = data[-N_test:]
+        data = data[0:-N_test]
+        N_validate = int(0.1*data.shape[0])
+        data_validate = data[-N_validate:]
+        data_train = data[0:-N_validate]
+        data = np.vstack((data_train, data_validate))
+        return data_train, data_validate, data_test
         
     def train(self, batch_size):
-        indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
+        indx = np.random.randint(low = 0, high = len(self.X_train), size = batch_size)
         return self.X[indx, :]
-
-    def load_all(self):
-        return self.X, self.Y
-
+    def get_single_density(self,data):
+        #gmm
+        p1 = 1./(np.sqrt(2*np.pi)*0.1) * np.exp(-np.sum((self.mean[0]-data[:2])**2) / (2*0.1**2)) 
+        p2 = 1./(np.sqrt(2*np.pi)*0.1) * np.exp(-np.sum((self.mean[1]-data[:2])**2) / (2*0.1**2)) 
+        p_gmm = (p1+p2)/2.
+        #Gaussian
+        p_gau = 1./(np.sqrt(2*np.pi)*0.1)**2 * np.exp(-np.sum((0.5-data[2])**2) / (2*0.1**2)) 
+        #Uniform
+        p_uni = 1
+        #indep gmm
+        p_indep_gmm = 1
+        for i in range(4,self.dim):
+            p1 = 1./(np.sqrt(2*np.pi)*self.sd[0]) * np.exp(-np.sum((self.centers[0]-data[i])**2) / (2*self.sd[0]**2)) 
+            p2 = 1./(np.sqrt(2*np.pi)*self.sd[1]) * np.exp(-np.sum((self.centers[1]-data[i])**2) / (2*self.sd[1]**2)) 
+            p_indep_gmm *= (p1+p2)/2.
+        return np.prod([p_gmm,p_gau,p_uni,p_indep_gmm])
+    def get_all_density(self,batch_data):
+        assert batch_data.shape[1]==self.dim
+        p_all = map(self.get_single_density,batch_data)
+        return np.array(p_all)
 
 
 class Uniform_sampler(object):
@@ -322,7 +601,6 @@ class Gaussian_sampler(object):
         indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
         return self.X[indx, :]
 
-    
     def get_batch(self,batch_size):
         return np.random.normal(self.mean, self.sd, (batch_size,len(self.mean)))
 
@@ -922,18 +1200,90 @@ if __name__=='__main__':
     from scipy import stats
     from sklearn.neighbors import KernelDensity
     from  sklearn.mixture import GaussianMixture
+    from scipy.stats import gaussian_kde
     import matplotlib
     matplotlib.use('agg')
     import matplotlib.pyplot as plt
-    import seaborn as sns
+    #import seaborn as sns
     import random
-    a=[]
-    b=[1,2,3]
-    a.append(b)
-    a.append(b)
-    c = np.stack(a).mean(axis=1)
-    print np.where(np.array(b)==max(b))[0]
+    np.random.seed(2)
+    
+    # x = list(range(3,11))
+    # y_kde = [0.989,	0.967,0.911,0.743,0.549,0.378,0.226,0.14]
+    # y_made = [0.014,0.03,0.014,0.018,0.029,0.039,0.033,0.032]
+    # y_nvp = [0.741,0.785,0.812,0.803,0.764,0.709,0.618,0.669]
+    # y_maf = [0.879,0.847,0.796,0.744,0.69,0.663,0.654,0.595]
+    # y_cf = [0.841,0.776,0.745,0.703,0.612,0.566,0.481,0.505]
+    # y_is = [0.942,0.922,0.929,0.88,0.85,0.847,0.836,0.829]
+    # lw=2
+    # plt.figure()
+    # plt.plot(x,y_kde,'*-',color=(135/255. ,135/255., 135/255.),label='KDE',linewidth=lw)
+    # plt.plot(x,y_made,'o-',color=(253/255. ,198/255., 122/255.),label='MADE',linewidth=lw)
+    # plt.plot(x,y_nvp,'s-',color=(87/255. ,104/255., 180/255.),label='Real NVP',linewidth=lw)
+    # plt.plot(x,y_maf,'v-',color=(240/255. ,168/255., 171/255.),label='MAF',linewidth=lw)
+    # plt.plot(x,y_cf,'D-',color=(215/255. ,220/255., 254/255.),label='Rountrip-CF',linewidth=lw)
+    # plt.plot(x,y_is,'d-',color=(169/255. ,209/255., 142/255.),label='Rountrip-IS',linewidth=lw)
+    # plt.legend(loc = "best")
+    # plt.savefig('com.png',dpi=300)
+    # sys.exit(0)
+    ys = UCI_sampler('datasets/YearPredictionMSD/data.npy')
+    #ys = hepmass_sampler()
+    print ys.X_train.shape, ys.X_val.shape,ys.X_test.shape
+    X = np.concatenate([ys.X_train,ys.X_val])
+    gkde1 = gaussian_kde(X.T,'silverman')
+    gkde2 = gaussian_kde(X.T,'scott')
+    py_gau_kernel1=gkde1.logpdf(ys.X_test.T)
+    py_gau_kernel2=gkde2.logpdf(ys.X_test.T)
+    print np.mean(py_gau_kernel1),2.*np.std(py_gau_kernel1)/np.sqrt(len(py_gau_kernel1))
+    print np.mean(py_gau_kernel2),2.*np.std(py_gau_kernel2)/np.sqrt(len(py_gau_kernel2))
 
+
+    sys.exit()
+    ys = Swiss_roll_sampler(N=20000)
+    print ys.X_train.shape, ys.X_val.shape, ys.X_test.shape
+    np.savez('data_swill_roll.npz',ys.X_train,ys.X_val,ys.X_test)
+    sys.exit()
+    
+    # for dim in range(30,100,20):
+    #     ys = Multi_dis_sampler(N=50000,dim=dim)
+    #     print ys.X_train.shape, ys.X_val.shape, ys.X_test.shape
+    #     np.savez('data_multi_v2_dim%d.npz'%dim,ys.X_train,ys.X_val,ys.X_test)
+    # sys.exit()
+    # a = ys.get_all_density(ys.X_test)
+    # print a.shape
+    # sys.exit()
+    for dim in [5,10,30,50,100]:
+        ys = GMM_indep_sampler(N=50000, sd=0.1, dim=dim, n_components=3, bound=1)
+        #ys = GMM_sampler(N=10000,n_components=dim,dim=dim,sd=0.05)
+        print ys.X_train.shape, ys.X_val.shape, ys.X_test.shape
+        np.savez('data_indep_dim%d.npz'%dim,ys.X_train,ys.X_val,ys.X_test)
+
+    sys.exit()
+    # s=miniboone_sampler()
+    # print s.X_train.shape,s.X_val.shape,s.X_test.shape,s.nb_train
+    # s=gas_sampler()
+    # print s.X_train.shape,s.X_val.shape,s.X_test.shape,s.nb_train
+    # s=power_sampler()
+    # print s.X_train.shape,s.X_val.shape,s.X_test.shape,s.nb_train
+    # s=hepmass_sampler()
+    # print s.X_train.shape,s.X_val.shape,s.X_test.shape,s.nb_train
+
+    s=UCI_sampler('datasets/AReM/data.npy')
+    print s.X_train.shape,s.X_val.shape,s.X_test.shape,s.nb_train
+    print s.X_train[0,:5],s.X_val[0,:5]
+    a = copy.copy(s.X_train)
+    #a=s.X_train
+    np.random.shuffle(a)
+    print s.X_train[0,:5],s.X_val[0,:5]
+    sys.exit()
+    s=UCI_sampler('datasets/Protein/data.npy')
+    print s.X_train.shape,s.X_val.shape,s.X_test.shape,s.nb_train
+    s=UCI_sampler('datasets/Superconductivty/data.npy')
+    print s.X_train.shape,s.X_val.shape,s.X_test.shape,s.nb_train
+    s=UCI_sampler('datasets/YearPredictionMSD/data.npy')
+    print s.X_train.shape,s.X_val.shape,s.X_test.shape,s.nb_train
+    s=UCI_sampler('datasets/BankMarketing/data.npy')
+    print s.X_train.shape,s.X_val.shape,s.X_test.shape,s.nb_train
     sys.exit()
     data_list,t_list=[],[]
     s = Cosine_sampler(block_size=10)
@@ -951,6 +1301,7 @@ if __name__=='__main__':
 
         print theta_resample.shape
         sys.exit()
+        plt.figure(figsize=(5,15))
         fig, ax = plt.subplots(1, 2)
         ax[0].hist(sampled_theta[:,0], bins=30,alpha=0.75)
         ax[1].hist(sampled_theta[:,1], bins=30,alpha=0.75)

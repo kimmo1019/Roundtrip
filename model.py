@@ -18,14 +18,14 @@ class Discriminator(object):
                 vs.reuse_variables()
             
             fc1 = tc.layers.fully_connected(
-                x, 64,
+                x, 128,
                 weights_initializer=tf.random_normal_initializer(stddev=0.02),
                 activation_fn=tf.identity
             )
             fc1 = leaky_relu(fc1)
 
             fc2 = tc.layers.fully_connected(
-                fc1, 64,
+                fc1, 128,
                 weights_initializer=tf.random_normal_initializer(stddev=0.02),
                 activation_fn=tf.identity
             )
@@ -54,14 +54,14 @@ class Generator(object):
             if reuse:
                 vs.reuse_variables()
             fc1 = tcl.fully_connected(
-                x, 64,
+                x, 128,
                 weights_initializer=tf.random_normal_initializer(stddev=0.02),
                 weights_regularizer=tc.layers.l2_regularizer(2.5e-5),
                 activation_fn=tf.identity
             )
             fc1 = leaky_relu(fc1)
             fc2 = tcl.fully_connected(
-                fc1, 64,
+                fc1, 128,
                 weights_initializer=tf.random_normal_initializer(stddev=0.02),
                 weights_regularizer=tc.layers.l2_regularizer(2.5e-5),
                 activation_fn=tf.identity

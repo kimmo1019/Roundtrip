@@ -84,21 +84,18 @@ class Discriminator_img(object):
                 conv = tcl.convolution2d(conv, 64, [4,4],[2,2],
                     activation_fn=tf.identity
                     )
-                conv = tc.layers.batch_norm(conv)
+                conv = tc.layers.batch_norm(conv,decay=0.9,scale=True,updates_collections=None)
                 conv = leaky_relu(conv)
             #(bs, 7, 7, 32)
-            print conv
             #fc = tf.reshape(conv, [bs, -1])
             fc = tcl.flatten(conv)
             #(bs, 1568)
-            print fc
             fc = tf.concat([fc, y], axis=1)
-            print fc
             fc = tcl.fully_connected(
                 fc, 1024,
                 activation_fn=tf.identity
                 )
-            fc = tc.layers.batch_norm(fc)
+            fc = tc.layers.batch_norm(fc,decay=0.9,scale=True,updates_collections=None)
             fc = leaky_relu(fc)
             
             fc = tf.concat([fc,y],axis=1)
@@ -136,7 +133,7 @@ class Generator_img(object):
                 z, 1024,
                 activation_fn=tf.identity
                 )
-            fc = tc.layers.batch_norm(fc,is_training = self.is_training)#test problem may occur?
+            fc = tc.layers.batch_norm(fc,decay=0.9,scale=True,updates_collections=None,is_training = self.is_training)
             fc = leaky_relu(fc)
             fc = tf.concat([fc, y], 1)
 
@@ -152,27 +149,26 @@ class Generator_img(object):
                     activation_fn=tf.identity
                     )
                 fc = tf.reshape(fc, tf.stack([bs, 8, 8, 128]))
-            fc = tc.layers.batch_norm(fc,is_training = self.is_training)
+            fc = tc.layers.batch_norm(fc,decay=0.9,scale=True,updates_collections=None,is_training = self.is_training)
             fc = leaky_relu(fc)
             fc = conv_cond_concat(fc,yb)
-
             conv = tcl.convolution2d_transpose(
                 fc, 64, [4,4], [2,2],
                 activation_fn=tf.identity
             )
             #(bs,14,14,64)
-            conv = tc.layers.batch_norm(conv,is_training = self.is_training)
+            conv = tc.layers.batch_norm(conv,decay=0.9,scale=True,updates_collections=None,is_training = self.is_training)
             conv = leaky_relu(conv)
             if self.dataset=='mnist':
                 output = tcl.convolution2d_transpose(
                     conv, 1, [4, 4], [2, 2],
-                    activation_fn=tf.nn.tanh
+                    activation_fn=tf.nn.sigmoid
                 )
                 output = tf.reshape(output, [bs, -1])
             elif self.dataset=='cifar10':
                 output = tcl.convolution2d_transpose(
                     conv, 3, [4, 4], [2, 2],
-                    activation_fn=tf.nn.tanh
+                    activation_fn=tf.nn.sigmoid
                 )
                 output = tf.reshape(output, [bs, -1])
             #(0,1) by tanh
@@ -214,19 +210,19 @@ class Encoder_img(object):
             conv = tcl.flatten(conv)
             fc = tcl.fully_connected(conv, 1024, activation_fn=tf.identity)
             
-            if self.cond:
-                output = tcl.fully_connected(
-                    fc, self.output_dim+10, 
-                    activation_fn=tf.identity
-                    )
-                logits = output[:, self.output_dim:]
-                y = tf.nn.softmax(logits)
-                return output[:,:self.output_dim], y, logits
-            else:
-                output = tcl.fully_connected(
-                    fc, self.output_dim, 
-                    activation_fn=tf.identity
-                    )                
+            # if self.cond:
+            #     output = tcl.fully_connected(
+            #         fc, self.output_dim+10, 
+            #         activation_fn=tf.identity
+            #         )
+            #     logits = output[:, self.output_dim:]
+            #     y = tf.nn.softmax(logits)
+            #     return output[:,:self.output_dim], y, logits
+            # else:
+            output = tcl.fully_connected(
+                fc, self.output_dim, 
+                activation_fn=tf.identity
+                )                
             return output
 
     @property
