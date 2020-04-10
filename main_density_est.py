@@ -180,7 +180,7 @@ class RoundtripModel(object):
             if epoch == cv_epoch:
                 best_sd, best_scale = self.model_selection()
             if epoch >= cv_epoch:
-                py_est_val = self.estimate_py_with_IS(data_y_val,epoch,sd_y=best_sd,scale=best_scale,sample_size=20000,log=True,save=False)
+                py_est_val = self.estimate_py_with_IS(data_y_val,epoch,sd_y=best_sd,scale=best_scale,sample_size=40000,log=True,save=False)
                 average_likelihood_val = np.mean(py_est_val)
                 sd_likelihood_val = np.std(py_est_val)/np.sqrt(len(py_est_val))
                 f=open('%s/val_likelihood.txt'%self.save_dir,'a+')
@@ -263,7 +263,7 @@ class RoundtripModel(object):
         return jcob_pred
 
     #estimate pdf of y (e.g., p(y)) with importance sampling
-    def estimate_py_with_IS(self,y_points,epoch,sd_y=0.45,scale=0.5,sample_size=20000,bs=1024,log=True,use_ess=True,save=True):
+    def estimate_py_with_IS(self,y_points,epoch,sd_y=0.5,scale=0.5,sample_size=40000,bs=1024,log=True,save=True):
         np.random.seed(0)
         from scipy.stats import t
         from multiprocessing.dummy import Pool as ThreadPool
@@ -351,8 +351,8 @@ class RoundtripModel(object):
 
         return py_est
 
-    #estimate pdf of y (e.g., p(y)) with closed form formulation
-    def estimate_py_with_CF(self,y_points,epoch,sd_y=0.45,scale=0.5,sample_size=30000,log=True,save=True):
+    #estimate pdf of y (e.g., p(y)) with Laplace approximation
+    def estimate_py_with_CF(self,y_points,epoch,sd_y=0.5,log=True,save=True):
         from scipy.stats import t
         from multiprocessing.dummy import Pool as ThreadPool
 
@@ -388,7 +388,7 @@ class RoundtripModel(object):
         else:
             py_est = map(lambda x,y: 1./(np.sqrt(2*np.pi)*sd_y)**self.y_dim* sd_y**self.y_dim *np.sqrt(np.linalg.det(x)) * np.exp(-0.5*y), Sigma, c_y)
         if save:
-            np.savez('%s/py_est_at_epoch%d_sd%f_scale%f_cf.npz'%(self.save_dir,epoch,sd_y,scale), py_est, y_points)
+            np.savez('%s/py_est_at_epoch%d_sd%f_cf.npz'%(self.save_dir,epoch,sd_y), py_est, y_points)
         return py_est
 
     def save(self,epoch):
