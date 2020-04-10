@@ -417,7 +417,7 @@ class RoundtripModel(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('')
-    parser.add_argument('--data', type=str, default='simutation_data')
+    parser.add_argument('--data', type=str, default='indep_gmm')
     parser.add_argument('--model', type=str, default='model')
     parser.add_argument('--dx', type=int, default=10)
     parser.add_argument('--dy', type=int, default=10)
@@ -427,7 +427,7 @@ if __name__ == '__main__':
     parser.add_argument('--patience', type=int, default=20)
     parser.add_argument('--alpha', type=float, default=10.0)
     parser.add_argument('--beta', type=float, default=10.0)
-    parser.add_argument('--sd_y', type=float, default=0.5,help='standard deviation in density estimation')
+    parser.add_argument('--sd_y', type=float, default=0.5,help='sigma in model assumption')
     parser.add_argument('--df', type=float, default=1,help='degree of freedom of student t distribution')
     parser.add_argument('--scale', type=float, default=1,help='scale of student t distribution')
     parser.add_argument('--timestamp', type=str, default='')
@@ -452,104 +452,60 @@ if __name__ == '__main__':
     h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=10,nb_units=256)
     dx_net = model.Discriminator(input_dim=x_dim,name='dx_net',nb_layers=2,nb_units=128)
     dy_net = model.Discriminator(input_dim=y_dim,name='dy_net',nb_layers=4,nb_units=256)
-    
-    xs = util.Gaussian_sampler(N=5000,mean=np.zeros(x_dim),sd=1.0)
-    #ys = util.Gaussian_sampler(N=10000,mean=np.zeros(y_dim),sd=1.0)
-    #ys = util.GMM_sampler(N=10000,n_components=5,dim=y_dim,sd=0.5)
-    #ys = util.GMM_sampler(N=50000,n_components=15,dim=y_dim,sd=0.5)
-    #ys = util.Multi_dis_sampler(N=20000,dim=y_dim)
-    #ys = util.miniboone_sampler()
-    #ys = util.power_sampler()
-    #ys = util.gas_sampler()
-    #ys = util.hepmass_sampler()
-    #ys = util.UCI_sampler('datasets/YearPredictionMSD/data.npy')
-    #ys = util.Outliner_sampler('datasets/Outliner/ForestCover/data.npz')
-    #ys = util.Gaus_Uni_sampler(N=10000,mean=0,sd=1.0,norm_dim=1,uni_dim=y_dim-1)
-    ys = util.GMM_indep_sampler(N=50000, sd=0.1, dim=y_dim, n_components=3, bound=1)
-    #np.savez('data_indep_dim%d.npz'%y_dim,ys.X_train,ys.X_val,ys.X_test)
-    #ys = util.GMM_indep_sampler(N=50000, sd=0.05, dim=x_dim, n_components=5, bound=1)
     pool = util.DataPool()
-    ################ gaussian mixture with 2 components############
-    # mean = np.array([[0.25, 0.25],[0.75, 0.75]])
-    # cov1 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov2 = np.array([[0.05**2, 0],[0, 0.05**2]])
-    # cov = np.array([cov1,cov2])
-    # weights = [0.4,0.6]
-    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
-    ################ gaussian mixture with 4 components############
-    # mean = 0.5*np.array([[1, 1],[-1, 1],[1, -1],[-1, -1]])
-    # sd = 0.1
-    # cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
-    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
+    xs = util.Gaussian_sampler(N=5000,mean=np.zeros(x_dim),sd=1.0)
 
-    ################ gaussian mixture with 8 components in three dimensional space#####
-    # mean = 0.75*np.array([[1,1,1],[-1,1,1],[1,-1,1],[1,1,-1],[-1,-1,1],[-1,1,-1], \
-    #     [1,-1,-1],[-1,-1,-1]])
-    # sd = 0.05
-    # cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
-    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
+    if data == "indep_gmm":
+        ys = util.GMM_indep_sampler(N=20000, sd=0.1, dim=y_dim, n_components=3, bound=1)
+    
+    elif data == "eight_octagon_gmm":
+        n_components = 8
+        def cal_cov(theta,sx=1,sy=0.4**2):
+            Scale = np.array([[sx, 0], [0, sy]])
+            c, s = np.cos(theta), np.sin(theta)
+            Rot = np.array([[c, -s], [s, c]])
+            T = Rot.dot(Scale)
+            Cov = T.dot(T.T)
+            return Cov
+        radius = 3
+        mean = np.array([[radius*math.cos(2*np.pi*idx/float(n_components)),radius*math.sin(2*np.pi*idx/float(n_components))] for idx in range(n_components)])
+        cov = np.array([cal_cov(2*np.pi*idx/float(n_components)) for idx in range(n_components)])
+        ys = util.GMM_sampler(N=20000,mean=mean,cov=cov)
+    
+    elif data == "involute":
+        ys = util.Swiss_roll_sampler(N=20000)
 
-    ################ gaussian mixture with 2**n components in n dimensional space#####
-    # linspace_list = 0.75*np.array([np.linspace(-1.,1.,2) for _ in range(y_dim)])
-    # mesh_grids_list = np.meshgrid(*linspace_list)
-    # mean = np.vstack([item.ravel() for item in mesh_grids_list]).T
-    # sd = 0.05
-    # cov = np.array([(sd**2)*np.eye(mean.shape[-1]) for item in range(len(mean))])
-    # ys = util.GMM_sampler(N=10000,mean=mean,cov=cov)
-    ################ gaussian mixture with 8-10 components forming a circle############
-    # n_components = 8
-    # def cal_cov(theta,sx=1,sy=0.4**2):
-    #     Scale = np.array([[sx, 0], [0, sy]])
-    #     #theta = 0*np.pi/4.0
-    #     c, s = np.cos(theta), np.sin(theta)
-    #     Rot = np.array([[c, -s], [s, c]])
-    #     T = Rot.dot(Scale)
-    #     Cov = T.dot(T.T)
-    #     return Cov
-    # radius = 3
-    # mean = np.array([[radius*math.cos(2*np.pi*idx/float(n_components)),radius*math.sin(2*np.pi*idx/float(n_components))] for idx in range(n_components)])
-    # cov = np.array([cal_cov(2*np.pi*idx/float(n_components)) for idx in range(n_components)])
-    # ys = util.GMM_sampler(N=20000,mean=mean,cov=cov)
-    # print ys.X_train.shape, ys.X_val.shape, ys.X_test.shape
-    # np.savez('data_gmm_8com.npz',ys.X_train,ys.X_val,ys.X_test)
-    # sys.exit()
+    elif data.startswith("uci"):
+        if data == "uci_AReM":
+            ys = util.UCI_sampler('datasets/AReM/data.npy')
+        elif data == "uci_CASP":
+            ys = util.UCI_sampler('datasets/Protein/data.npy')
+        elif data == "uci_HEPMASS":
+            ys = util.hepmass_sampler()
+        elif data == "uci_BANK":
+            ys = util.UCI_sampler('datasets/BANK/data.npy')
+        elif data == "uci_YPMSD":
+            ys = util.UCI_sampler('datasets/YearPredictionMSD/data.npy')
+        else:
+            print("Wrong UCI data name!")
+            sys.exit()
 
-    ################ gaussian mixture with random rotation and scaling transformations ############
-    # def get_gmm_param(max_scale=5):
-    #     T = np.eye(y_dim)
-    #     for i in range(y_dim-1):
-    #         theta = np.random.uniform(-2*np.pi,2*np.pi)
-    #         c, s = np.cos(theta), np.sin(theta)
-    #         R = np.array([[c, -s], [s, c]])
-    #         Rot = np.eye(y_dim)
-    #         Rot[i:(i+2),i:(i+2)] = R
-    #         T = T.dot(Rot)
-    #     S = np.eye(y_dim)
-    #     for i in range(y_dim):
-    #         if np.random.rand() > 0.5:
-    #             S[i,i] *= np.random.uniform(1,max_scale) 
-    #         else:
-    #             S[i,i] /= np.random.uniform(1,max_scale) 
-    #     T = T.dot(S)
-    #     Cov = T.dot(T.T)
-    #     return Cov
-    # n_components=10
-    # np.random.seed(0)
-    # mean = np.random.uniform(-5,5,(n_components,y_dim))
-    # cov = np.array([get_gmm_param() for _ in range(n_components)])
-    # ys = util.GMM_sampler(N=50000,mean=mean,cov=cov)
-    # np.savez('data_gmm_trans_dim%d.npz'%y_dim,ys.X_train,ys.X_val,ys.X_test)
-    ################ swiss roll##############
-    #ys = util.Swiss_roll_sampler(N=20000)
+    elif data.startswith("ood"):
+        if data == "ood_Shuttle":
+            ys = util.Outliner_sampler('datasets/Outliner/Shuttle/data.npz')
+        elif data == "ood_Mammography":
+            ys = util.Outliner_sampler('datasets/Outliner/Mammography/data.npz')
+        elif data == "ood_ForestCover":
+            ys = util.Outliner_sampler('datasets/Outliner/ForestCover/data.npz')
+        else:
+            print("Wrong OOD data name!")
+            sys.exit()
+    
+    else:
+        print("Wrong data name!")
+        sys.exit()
 
-    ################ gaussian mixture plus normal plus uniform############
-    # mean = np.array([[0.25, 0.25, 0.25],[0.75, 0.75, 0.75]])
-    # cov1 = np.array([[0.05**2, 0.03**2, 0],[0.03**2, 0.05**2, 0],[0,0,0.05**2]])
-    # cov2 = (0.05*2)*np.eye(3)
-    # cov = np.array([cov1,cov2])
-    # weights = [0.5,0.5]
-    # ys = util.GMM_Uni_sampler(N=10000,mean=mean,cov=cov,weights=weights)
 
     RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, pool, batch_size, alpha, beta, sd_y, df, scale)
 
@@ -561,8 +517,7 @@ if __name__ == '__main__':
             RTM.load(pre_trained=True)
             timestamp = 'pre-trained'
         else:
-            epoch=199
-            RTM.load(pre_trained=False, timestamp = timestamp, epoch = epoch)
+            RTM.load(pre_trained=False, timestamp = timestamp, epoch = epochs-1)
             data_y_test = RTM.y_sampler.X_test
-            py,_,_ = RTM.estimate_py_with_IS(data_y_test,epoch,sd_y=0.5,scale=0.5,sample_size=30000,log=True)
+            py = RTM.estimate_py_with_IS(data_y_test,0,sd_y=0.5,scale=0.5,sample_size=40000,log=True)
             
