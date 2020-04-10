@@ -12,7 +12,6 @@ import numpy as np
 import random
 import copy
 import math
-import metric
 import util
 
 '''
@@ -206,7 +205,7 @@ class RoundtripModel(object):
             
 
     #selection the best sd and scale 
-    def model_selection(self,sample_size=10000):
+    def model_selection(self,sample_size=20000):
         data_y_val = self.y_sampler.X_val
         sd_list = [0.05,0.1,0.5]
         scale_list = [0.005,0.01,0.1,0.5]
