@@ -28,7 +28,7 @@ Instructions: Roundtrip model for density estimation
     Dy(.) - discriminator network in y space
 '''
 class RoundtripModel(object):
-    def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, pool, batch_size, alpha, beta, sd_y, df, scale):
+    def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, pool, batch_size, alpha, beta ,df):
         self.model = model
         self.data = data
         self.g_net = g_net
@@ -40,10 +40,8 @@ class RoundtripModel(object):
         self.batch_size = batch_size
         self.alpha = alpha
         self.beta = beta
-        self.pool = pool
-        self.sd_y = sd_y
         self.df = df
-        self.scale = scale
+        self.pool = pool
         self.x_dim = self.dx_net.input_dim
         self.y_dim = self.dy_net.input_dim
         tf.reset_default_graph()
@@ -115,12 +113,12 @@ class RoundtripModel(object):
         self.d_merged_summary = tf.summary.merge([self.dx_loss_summary,self.dy_loss_summary])
 
         #graph path for tensorboard visualization
-        self.graph_dir = 'graph/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}_sd={}_df={}_scale={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta, self.sd_y, self.df, self.scale)
+        self.graph_dir = 'graph/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
         if not os.path.exists(self.graph_dir):
             os.makedirs(self.graph_dir)
         
         #save path for saving predicted data
-        self.save_dir = 'data/density_est/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}_sd={}_df={}_scale={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta, self.sd_y, self.df, self.scale)
+        self.save_dir = 'data/density_est/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
 
@@ -130,6 +128,7 @@ class RoundtripModel(object):
         run_config.gpu_options.per_process_gpu_memory_fraction = 1.0
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
+
 
 
     def train(self, epochs, cv_epoch, patience):
@@ -176,30 +175,33 @@ class RoundtripModel(object):
                         (epoch, counter, time.time() - start_time, g_loss_adv, h_loss_adv, l2_loss_x, l2_loss_y, \
                         g_loss, h_loss, g_h_loss, dx_loss, dy_loss, d_loss))                 
                 counter+=1
-
             if epoch == cv_epoch:
-                best_sd, best_scale = self.model_selection()
+                global best_sd, best_scale
+                if use_cv:
+                   best_sd, best_scale = self.model_selection()
+                f_val = open('%s/log_val.txt'%self.save_dir,'a+')
+                f_test = open('%s/log_test.txt'%self.save_dir,'a+')
+                f_val.write('epoch\taverage_likelihood\tstandard_deviation\n')
+                f_test.write('epoch\taverage_likelihood\tstandard_deviation\n')
             if epoch >= cv_epoch:
                 py_est_val = self.estimate_py_with_IS(data_y_val,epoch,sd_y=best_sd,scale=best_scale,sample_size=40000,log=True,save=False)
                 average_likelihood_val = np.mean(py_est_val)
                 sd_likelihood_val = np.std(py_est_val)/np.sqrt(len(py_est_val))
-                f=open('%s/val_likelihood.txt'%self.save_dir,'a+')
-                f.write('%d\t%f\t%f\t%f\t%f\n'%(epoch,average_likelihood_val,sd_likelihood_val))
-                f.close()
+                f_val.write('%d\t%f\t%f\n'%(epoch,average_likelihood_val,sd_likelihood_val))
                 if average_likelihood_val > best_likelihood_val:
                     best_likelihood_val = average_likelihood_val
                     wait=0
                     py_est_test = self.estimate_py_with_IS(data_y_test,epoch,sd_y=best_sd,scale=best_scale,sample_size=40000,log=True)
                     average_likelihood_test = np.mean(py_est_test)
                     sd_likelihood_test = np.std(py_est_test)/np.sqrt(len(py_est_test))
-                    f=open('%s/test_likelihood.txt'%self.save_dir,'a+')
-                    f.write('%d\t%f\t%f\t%f\t%f\n'%(epoch,average_likelihood_test,sd_likelihood_test))
-                    f.close()
+                    f_test.write('%d\t%f\t%f\n'%(epoch,average_likelihood_test,sd_likelihood_test))
                     self.save(epoch)
                 else:
                     wait+=1
                     if wait>patience or epoch+1==epochs:
                         print('Early stopping at %d with best sd:%f, best scale:%f, test average likelihood%f, test sd likelihood%f'%(epoch,best_sd,best_scale, average_likelihood_test,sd_likelihood_test))
+                        f_val.close()
+                        f_test.close()
                         sys.exit()
             
 
@@ -248,7 +250,7 @@ class RoundtripModel(object):
             x_pred[ind, :] = batch_x_
         return x_pred
 
-    #calculate gradient 
+    #calculate Jacobian matrix 
     def get_jacobian(self,x,bs=16):
         N = x.shape[0]
         jcob_pred = np.zeros(shape=(N, self.y_dim, self.x_dim)) 
@@ -351,7 +353,7 @@ class RoundtripModel(object):
 
         return py_est
 
-    #estimate pdf of y (e.g., p(y)) with Laplace approximation
+    #estimate pdf of y (e.g., p(y)) with Laplace approximation (closed-from)
     def estimate_py_with_CF(self,y_points,epoch,sd_y=0.5,log=True,save=True):
         from scipy.stats import t
         from multiprocessing.dummy import Pool as ThreadPool
@@ -407,7 +409,7 @@ class RoundtripModel(object):
             checkpoint_dir = 'pre_trained_models/{}/{}_{}_{}_{}}'.format(self.data, self.x_dim,self.y_dim, self.alpha, self.beta)
         else:
             if timestamp == '':
-                print('Best Timestamp not provided. Abort !')
+                print('Best Timestamp not provided.')
                 checkpoint_dir = ''
             else:
                 checkpoint_dir = 'checkpoint/{}/{}'.format(self.data, timestamp)
@@ -427,11 +429,10 @@ if __name__ == '__main__':
     parser.add_argument('--patience', type=int, default=20)
     parser.add_argument('--alpha', type=float, default=10.0)
     parser.add_argument('--beta', type=float, default=10.0)
-    parser.add_argument('--sd_y', type=float, default=0.5,help='sigma in model assumption')
-    parser.add_argument('--df', type=float, default=1,help='degree of freedom of student t distribution')
-    parser.add_argument('--scale', type=float, default=1,help='scale of student t distribution')
     parser.add_argument('--timestamp', type=str, default='')
+    parser.add_argument('--use_cv', type=bool, default=False)
     parser.add_argument('--train', type=str, default='False')
+    parser.add_argument('--df', type=float, default=1,help='degree of freedom of student t distribution')
     args = parser.parse_args()
     data = args.data
     model = importlib.import_module(args.model)
@@ -443,11 +444,10 @@ if __name__ == '__main__':
     patience = args.patience
     alpha = args.alpha
     beta = args.beta
-    sd_y = args.sd_y
     df = args.df
-    scale = args.scale
     timestamp = args.timestamp
-    
+    use_cv = args.use_cv
+
     g_net = model.Generator(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=10,nb_units=512)
     h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=10,nb_units=256)
     dx_net = model.Discriminator(input_dim=x_dim,name='dx_net',nb_layers=2,nb_units=128)
@@ -457,9 +457,14 @@ if __name__ == '__main__':
     xs = util.Gaussian_sampler(N=5000,mean=np.zeros(x_dim),sd=1.0)
 
     if data == "indep_gmm":
+        if not use_cv:
+            best_sd, best_scale = 0.05, 0.5
         ys = util.GMM_indep_sampler(N=20000, sd=0.1, dim=y_dim, n_components=3, bound=1)
+
     
     elif data == "eight_octagon_gmm":
+        if not use_cv:
+            best_sd, best_scale = 0.1, 0.5
         n_components = 8
         def cal_cov(theta,sx=1,sy=0.4**2):
             Scale = np.array([[sx, 0], [0, sy]])
@@ -474,6 +479,8 @@ if __name__ == '__main__':
         ys = util.GMM_sampler(N=20000,mean=mean,cov=cov)
     
     elif data == "involute":
+        if not use_cv:
+            best_sd, best_scale = 0.4, 0.5
         ys = util.Swiss_roll_sampler(N=20000)
 
     elif data.startswith("uci"):
@@ -493,11 +500,11 @@ if __name__ == '__main__':
 
     elif data.startswith("ood"):
         if data == "ood_Shuttle":
-            ys = util.Outliner_sampler('datasets/Outliner/Shuttle/data.npz')
+            ys = util.Outlier_sampler('datasets/OOD/Shuttle/data.npz')
         elif data == "ood_Mammography":
-            ys = util.Outliner_sampler('datasets/Outliner/Mammography/data.npz')
+            ys = util.Outlier_sampler('datasets/OOD/Mammography/data.npz')
         elif data == "ood_ForestCover":
-            ys = util.Outliner_sampler('datasets/Outliner/ForestCover/data.npz')
+            ys = util.Outlier_sampler('datasets/OOD/ForestCover/data.npz')
         else:
             print("Wrong OOD data name!")
             sys.exit()
@@ -507,7 +514,7 @@ if __name__ == '__main__':
         sys.exit()
 
 
-    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, pool, batch_size, alpha, beta, sd_y, df, scale)
+    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, pool, batch_size, alpha, beta, df)
 
     if args.train == 'True':
         RTM.train(epochs=epochs,cv_epoch=cv_epoch,patience=patience)
@@ -517,7 +524,45 @@ if __name__ == '__main__':
             RTM.load(pre_trained=True)
             timestamp = 'pre-trained'
         else:
-            RTM.load(pre_trained=False, timestamp = timestamp, epoch = epochs-1)
-            data_y_test = RTM.y_sampler.X_test
-            py = RTM.estimate_py_with_IS(data_y_test,0,sd_y=0.5,scale=0.5,sample_size=40000,log=True)
+            RTM.load(pre_trained=False, timestamp = timestamp, epoch = epochs)
+            #density estimate on 2D 100 x 100 grid
+            if data == "indep_gmm":
+                x1_min, x1_max, x2_min, x2_max = -1.5, 1.5, -1.5, 1.5
+                grid_x1 = np.linspace(x1_min,x1_max,100)
+                grid_x2 = np.linspace(x2_min,x2_max,100)
+                v1,v2 = np.meshgrid(grid_x1,grid_x2)
+                data_grid = np.vstack((v1.ravel(),v2.ravel())).T
+                py = RTM.estimate_py_with_IS(data_grid,0,sd_y=0.1,scale=0.5,sample_size=40000,log=False)
+                py = py.reshape((100,100))
+                import matplotlib
+                matplotlib.use('agg')
+                import matplotlib.pyplot as plt
+                plt.figure()
+                plt.rcParams.update({'font.size': 22})
+                plt.imshow(py, extent=[v1.min(), v1.max(), v2.min(), v2.max()],
+            cmap='Blues', alpha=0.9)
+                plt.colorbar()
+                plt.savefig('%s/true_density.pdf'%(RTM.save_dir))
+                plt.close()
+            elif data == "eight_octagon_gmm":
+                x1_min, x1_max, x2_min, x2_max = -5, 5, -5, 5
+                grid_x1 = np.linspace(x1_min,x1_max,100)
+                grid_x2 = np.linspace(x2_min,x2_max,100)
+                v1,v2 = np.meshgrid(grid_x1,grid_x2)
+                data_grid = np.vstack((v1.ravel(),v2.ravel())).T
+                py = RTM.estimate_py_with_IS(data_grid,0,sd_y=0.1,scale=0.5,sample_size=40000,log=False)
+            elif data == "involute":
+                x1_min, x1_max, x2_min, x2_max = -6, 5, -5, 5
+                grid_x1 = np.linspace(x1_min,x1_max,100)
+                grid_x2 = np.linspace(x2_min,x2_max,100)
+                v1,v2 = np.meshgrid(grid_x1,grid_x2)
+                data_grid = np.vstack((v1.ravel(),v2.ravel())).T
+                py = RTM.estimate_py_with_IS(data_grid,0,sd_y=0.1,scale=0.5,sample_size=40000,log=False)
+            else:
+                print("Wrong 2D data name!")
+                sys.exit()
+            
+                
+
+
             
