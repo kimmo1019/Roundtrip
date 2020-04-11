@@ -23,12 +23,11 @@ Instructions: Roundtrip model for density estimation
     x__ - reconstructed distribution, x__ = H(G(y))
     G(.)  - generator network for mapping x space to y space
     H(.)  - generator network for mapping y space to x space
-    Dx(.) - discriminator network in x space
-    Dy(.) - discriminator network in y space
+    Dx(.) - discriminator network in x space (latent space)
+    Dy(.) - discriminator network in y space (observation space)
 '''
 class RoundtripModel(object):
-    def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, pool, batch_size, alpha, beta ,df):
-        self.model = model
+    def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, data, pool, batch_size, alpha, beta ,df, is_train):
         self.data = data
         self.g_net = g_net
         self.h_net = h_net
@@ -113,12 +112,12 @@ class RoundtripModel(object):
 
         #graph path for tensorboard visualization
         self.graph_dir = 'graph/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
-        if not os.path.exists(self.graph_dir):
+        if not os.path.exists(self.graph_dir) and is_train:
             os.makedirs(self.graph_dir)
         
         #save path for saving predicted data
-        self.save_dir = 'data/density_est/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
-        if not os.path.exists(self.save_dir):
+        self.save_dir = 'data/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
+        if not os.path.exists(self.save_dir) and is_train:
             os.makedirs(self.save_dir)
 
         self.saver = tf.train.Saver(max_to_keep=500)
@@ -212,7 +211,7 @@ class RoundtripModel(object):
         records = []
         for sd in sd_list:
             for scale in scale_list:
-                py_est = self.estimate_py_with_IS(data_y_val,0,sd_y=sd,scale=scale,sample_size=sample_size,log=True,use_ess=True,save=False)
+                py_est = self.estimate_py_with_IS(data_y_val,0,sd_y=sd,scale=scale,sample_size=sample_size,log=True,save=False)
                 records.append([sd,scale,np.mean(py_est)])
         #sort according to the likelihood of validation set
         records.sort(key=lambda item:item[-1])
@@ -349,7 +348,6 @@ class RoundtripModel(object):
             py_est = np.array([np.mean(item) for item in py_list])
         if save:
             np.savez('%s/py_est_at_epoch%d_sd%f_scale%f.npz'%(self.save_dir,epoch,sd_y,scale), py_est, y_points)
-
         return py_est
 
     #estimate pdf of y (e.g., p(y)) with Laplace approximation (closed-from)
@@ -394,8 +392,7 @@ class RoundtripModel(object):
 
     def save(self,epoch):
 
-        checkpoint_dir = 'checkpoint/{}/{}'.format(self.data, self.timestamp)
-
+        checkpoint_dir = 'checkpoint/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
 
@@ -411,10 +408,9 @@ class RoundtripModel(object):
                 print('Best Timestamp not provided.')
                 checkpoint_dir = ''
             else:
-                checkpoint_dir = 'checkpoint/{}/{}'.format(self.data, timestamp)
-
-        self.saver.restore(self.sess, os.path.join(checkpoint_dir, 'model.ckpt-%d'%epoch))
-        print('Restored model weights.')
+                checkpoint_dir = 'checkpoint/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
+                self.saver.restore(self.sess, os.path.join(checkpoint_dir, 'model.ckpt-%d'%epoch))
+                print('Restored model weights.')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('')
@@ -430,7 +426,7 @@ if __name__ == '__main__':
     parser.add_argument('--beta', type=float, default=10.0)
     parser.add_argument('--timestamp', type=str, default='')
     parser.add_argument('--use_cv', type=bool, default=False)
-    parser.add_argument('--train', type=str, default='False')
+    parser.add_argument('--train', type=bool, default=False)
     parser.add_argument('--df', type=float, default=1,help='degree of freedom of student t distribution')
     args = parser.parse_args()
     data = args.data
@@ -446,6 +442,7 @@ if __name__ == '__main__':
     df = args.df
     timestamp = args.timestamp
     use_cv = args.use_cv
+    is_train = args.train
 
     g_net = model.Generator(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=10,nb_units=512)
     h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=10,nb_units=256)
@@ -497,15 +494,21 @@ if __name__ == '__main__':
             print("Wrong UCI data name!")
             sys.exit()
 
-    elif data.startswith("ood"):
-        if data == "ood_Shuttle":
-            ys = util.Outlier_sampler('datasets/OOD/Shuttle/data.npz')
-        elif data == "ood_Mammography":
-            ys = util.Outlier_sampler('datasets/OOD/Mammography/data.npz')
-        elif data == "ood_ForestCover":
-            ys = util.Outlier_sampler('datasets/OOD/ForestCover/data.npz')
+    elif data.startswith("odds"):
+        if data == "odds_Shuttle":
+            if not use_cv:
+                best_sd, best_scale = 0.1, 0.1
+            ys = util.Outlier_sampler('datasets/ODDS/Shuttle/data.npz')
+        elif data == "odds_Mammography":
+            if not use_cv:
+                best_sd, best_scale = 0.05, 0.01
+            ys = util.Outlier_sampler('datasets/ODDS/Mammography/data.npz')
+        elif data == "odds_ForestCover":
+            if not use_cv:
+                best_sd, best_scale = 0.1, 0.2
+            ys = util.Outlier_sampler('datasets/ODDS/ForestCover/data.npz')
         else:
-            print("Wrong OOD data name!")
+            print("Wrong ODDS data name!")
             sys.exit()
     
     else:
@@ -513,9 +516,9 @@ if __name__ == '__main__':
         sys.exit()
 
 
-    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, pool, batch_size, alpha, beta, df)
+    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, data, pool, batch_size, alpha, beta, df, is_train)
 
-    if args.train == 'True':
+    if args.train:
         RTM.train(epochs=epochs,cv_epoch=cv_epoch,patience=patience)
     else:
         print('Attempting to Restore Model ...')
@@ -523,45 +526,6 @@ if __name__ == '__main__':
             RTM.load(pre_trained=True)
             timestamp = 'pre-trained'
         else:
-            RTM.load(pre_trained=False, timestamp = timestamp, epoch = epochs)
-            #density estimate on 2D 100 x 100 grid
-            if data == "indep_gmm":
-                x1_min, x1_max, x2_min, x2_max = -1.5, 1.5, -1.5, 1.5
-                grid_x1 = np.linspace(x1_min,x1_max,100)
-                grid_x2 = np.linspace(x2_min,x2_max,100)
-                v1,v2 = np.meshgrid(grid_x1,grid_x2)
-                data_grid = np.vstack((v1.ravel(),v2.ravel())).T
-                py = RTM.estimate_py_with_IS(data_grid,0,sd_y=0.1,scale=0.5,sample_size=40000,log=False)
-                py = py.reshape((100,100))
-                import matplotlib
-                matplotlib.use('agg')
-                import matplotlib.pyplot as plt
-                plt.figure()
-                plt.rcParams.update({'font.size': 22})
-                plt.imshow(py, extent=[v1.min(), v1.max(), v2.min(), v2.max()],
-            cmap='Blues', alpha=0.9)
-                plt.colorbar()
-                plt.savefig('%s/true_density.pdf'%(RTM.save_dir))
-                plt.close()
-            elif data == "eight_octagon_gmm":
-                x1_min, x1_max, x2_min, x2_max = -5, 5, -5, 5
-                grid_x1 = np.linspace(x1_min,x1_max,100)
-                grid_x2 = np.linspace(x2_min,x2_max,100)
-                v1,v2 = np.meshgrid(grid_x1,grid_x2)
-                data_grid = np.vstack((v1.ravel(),v2.ravel())).T
-                py = RTM.estimate_py_with_IS(data_grid,0,sd_y=0.1,scale=0.5,sample_size=40000,log=False)
-            elif data == "involute":
-                x1_min, x1_max, x2_min, x2_max = -6, 5, -5, 5
-                grid_x1 = np.linspace(x1_min,x1_max,100)
-                grid_x2 = np.linspace(x2_min,x2_max,100)
-                v1,v2 = np.meshgrid(grid_x1,grid_x2)
-                data_grid = np.vstack((v1.ravel(),v2.ravel())).T
-                py = RTM.estimate_py_with_IS(data_grid,0,sd_y=0.1,scale=0.5,sample_size=40000,log=False)
-            else:
-                print("Wrong 2D data name!")
-                sys.exit()
+            RTM.load(pre_trained=False, timestamp = timestamp, epoch = epochs-1)
             
-                
-
-
             

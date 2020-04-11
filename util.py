@@ -354,7 +354,7 @@ class cifar10_sampler(object):
     def load_all(self):
         return self.trn_data, self.trn_label, self.trn_one_hot
 
-# Gaussian mixture sampler by either given parameters or random component centers and fixed sd
+# Gaussian mixture sampler
 class GMM_sampler(object):
     def __init__(self, N, mean=None, n_components=None, cov=None, sd=None, dim=None, weights=None):
         np.random.seed(1024)
@@ -365,7 +365,6 @@ class GMM_sampler(object):
         self.weights = weights
         if mean is None:
             assert n_components is not None and dim is not None and sd is not None
-            #self.mean = np.random.uniform(-0.5,0.5,(self.n_components,self.dim))
             self.mean = np.random.uniform(-5,5,(self.n_components,self.dim))
         else:
             assert cov is not None    
