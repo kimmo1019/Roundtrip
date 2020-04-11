@@ -21,22 +21,20 @@ def create_2d_grid_data(x1_min, x1_max, x2_min, x2_max,n=100):
 
 def visualization_2d(x1_min, x1_max, x2_min, x2_max, sd_y, scale, n=100):
     v1, v2, data_grid = create_2d_grid_data(x1_min, x1_max, x2_min, x2_max,n)
-    py = RTM.estimate_py_with_IS(data_grid,0,sd_y=sd_y,scale=scale,sample_size=40000,log=False)
+    py = RTM.estimate_py_with_IS(data_grid,0,sd_y=sd_y,scale=scale,sample_size=40000,log=False,save=False)
     py = py.reshape((n,n))
     plt.figure()
     plt.rcParams.update({'font.size': 22})
     plt.imshow(py, extent=[v1.min(), v1.max(), v2.min(), v2.max()],
 cmap='Blues', alpha=0.9)
     plt.colorbar()
-    plt.savefig('%s/2d_grid_density_pre.png'%(RTM.save_dir))
+    plt.savefig('%s/2d_grid_density_pre.png'%save_dir)
     plt.close()
 
 def odd_evaluate():
     X_test = ys.X_test
     X_train = ys.X_train
     label_test = ys.label_test
-    py = np.load(path)['arr_0']
-    pr_Roundtrip = precision_at_K(py,label_test)
     #one-class SVM
     clf = OneClassSVM(gamma='auto').fit(X_train)
     score_svm = clf.decision_function(X_test)#lower, more abnormal
@@ -46,12 +44,14 @@ def odd_evaluate():
     clf.fit(X_train)
     score_if = clf.decision_function(X_test)#lower, more abnormal
     pr_iso_forest = precision_at_K(score_if,label_test)
+    #Roundtrip
+    for each in os.listdir(path):
+        if each.startswith('py_est_at_epoch%d'%epoch):
+            py = np.load('%s/%s'%(path,each))['arr_0']
+            pr_Roundtrip = precision_at_K(py,label_test)        
     print("The precision at K of Roundtrip model is %.4f"%pr_Roundtrip)
     print("The precision at K of One-class SVM is %.4f"%pr_oneclassSVM)
     print("The precision at K of Isolation forest is %.4f"%pr_iso_forest)
-
-
-
 
 def precision_at_K(score, label_test):
     rank = rankdata(score)
@@ -69,9 +69,10 @@ if __name__=="__main__":
     parser.add_argument('--epoch', type=int, default=100,help='which epoch to be loaded')
     parser.add_argument('--alpha', type=float, default=10.0)
     parser.add_argument('--beta', type=float, default=10.0)
-    parser.add_argument('--path', type=str, default='',help='path to odd data')
+    parser.add_argument('--path', type=str, default='',help='path to ODDS predicted data')
     parser.add_argument('--timestamp', type=str, default='')
     parser.add_argument('--df', type=float, default=1,help='degree of freedom of student t distribution')
+    parser.add_argument('--train', type=bool, default=False)
     args = parser.parse_args()
     data = args.data
     model = importlib.import_module(args.model)
@@ -82,8 +83,11 @@ if __name__=="__main__":
     beta = args.beta
     epoch = args.epoch
     df = args.df
+    is_train = args.train
     path = args.path
     timestamp = args.timestamp
+
+    save_dir = 'data/density_est/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(timestamp, data, x_dim, y_dim, alpha, beta)
     g_net = model.Generator(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=10,nb_units=512)
     h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=10,nb_units=256)
     dx_net = model.Discriminator(input_dim=x_dim,name='dx_net',nb_layers=2,nb_units=128)
@@ -91,7 +95,7 @@ if __name__=="__main__":
     pool = util.DataPool()
     xs = util.Gaussian_sampler(N=5000,mean=np.zeros(x_dim),sd=1.0)
     ys = util.GMM_indep_sampler(N=20000, sd=0.1, dim=y_dim, n_components=3, bound=1)
-    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, data, pool, batch_size, alpha, beta, df)
+    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, data, pool, batch_size, alpha, beta, df, is_train)
     RTM.load(pre_trained=False, timestamp = timestamp, epoch = epoch)
     if data == "indep_gmm":
         visualization_2d(-1.5, 1.5, -1.5, 1.5, 0.05, 0.5)
