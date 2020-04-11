@@ -97,7 +97,7 @@ The comparing method, including MADE, Real NVP and MAF were implemented by [this
 
 ### Real Data
 
-Next, we tested Roundtrip on different types of real data including five datasets from UCI machine learning repository and two image datasets. We provided freely public access to all related datasets (UCI datasets, image datasets, and OODS datasets), which can be download from a [zenodo repository](https://zenodo.org/record/3747264#.XpA7qNNKhTY). All you need is to download the corresponding dataset (e.g., `AreM.tar.gz`), uncompress the data under `data` folder.
+Next, we tested Roundtrip on different types of real data including five datasets from UCI machine learning repository and two image datasets. We provided freely public access to all related datasets (UCI datasets, image datasets, and OODS datasets), which can be download from a [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). All you need is to download the corresponding dataset (e.g., `AreM.tar.gz`), uncompress the data under `data` folder.
 
 
 #### UCI Datasets
@@ -132,7 +132,7 @@ We also provide scripts for implementing Roundtrip with other UCI dataset.
 
 MNIST and CIFAR-10 were used in our study. Unlike previous experiments, we focus on conditional density estimation where a ont-hot encoded class label will be introduced to the networks as an additional input.
 
-Frist uncompress the two datasets under `data` folder.
+Download data from [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY) and uncompress the two datasets under `data` folder.
 
 One can run the conditional image generation and conditional denstiy estimation simultaneously through the following script.
 
@@ -148,7 +148,7 @@ One can run the conditional image generation and conditional denstiy estimation 
 
 ### Outlier Detection
 
-We introduced three outlier detection datasets (Shuttle, Mammography, and ForestCover) from ODDS library. Download the three datasets (`ODDS.tar.gz`) from the zenodo repository. Uncompress it under the `data` folder.
+We introduced three outlier detection datasets (Shuttle, Mammography, and ForestCover) from ODDS library. Download the three datasets (`ODDS.tar.gz`) from the [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Uncompress it under the `data` folder.
 
 Taking `Shuttle` dataset as an example, one can the following commonds to train a Roundtrip model
 
