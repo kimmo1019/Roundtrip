@@ -151,6 +151,7 @@ We introduced three outlier detection datasets (Shuttle, Mammography, and Forest
 One can the following commonds to train a Roundtrip model and evaluate by precision at K. 
 
 - Shuttle
+
     Model training
     ```shell
     CUDA_VISIBLE_DEVICES=0 python main_density_est.py  --dx 3 --dy 9 --train True --data odds_Shuttle --epochs 300 --cv_epoch 20 --patience 10
@@ -162,6 +163,7 @@ One can the following commonds to train a Roundtrip model and evaluate by precis
     [path] -- path to the frist part of outputs (`e.g., data/density_est_YYYYMMDD_HHMMSS_odds_Shuttle_x_dim=3_y_dim=9_alpha=10.0_beta=10.0`)
     ```
 - Mammography
+
     Model training
     ```shell
     CUDA_VISIBLE_DEVICES=0 python main_density_est.py  --dx 3 --dy 6 --train True --data odds_Mammography --epochs 300 --cv_epoch 20 --patience 10
@@ -171,6 +173,7 @@ One can the following commonds to train a Roundtrip model and evaluate by precis
     python results_analyze.py --data odds_Mammography --path path
     ```
 - ForestCover
+
     Model training
     ```shell
     CUDA_VISIBLE_DEVICES=0 python main_density_est.py  --dx 4 --dy 10 --train True --data odds_ForestCover --epochs 300 --cv_epoch 20 --patience 10
