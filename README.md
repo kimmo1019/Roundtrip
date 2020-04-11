@@ -159,18 +159,18 @@ One can the following commonds to train a Roundtrip model and evaluate by precis
     Model evaluation
     ```shell
     python results_analyze.py --data odds_Shuttle --epoch epoch --path path
-    [epoch] -- epoch for loading model weights (`e.g., epoch recorded in the last line in log_test.txt`)
-    [path] -- path to the frist part of outputs (`e.g., data/density_est_YYYYMMDD_HHMMSS_odds_Shuttle_x_dim=3_y_dim=9_alpha=10.0_beta=10.0`)
+    [epoch] -- epoch for loading model weights (e.g., epoch recorded in the last line in log_test.txt)
+    [path] -- path to the frist part of outputs (e.g., data/density_est_YYYYMMDD_HHMMSS_odds_Shuttle_x_dim=3_y_dim=9_alpha=10.0_beta=10.0)
     ```
 - Mammography
 
     Model training
     ```shell
-    CUDA_VISIBLE_DEVICES=0 python main_density_est.py  --dx 3 --dy 6 --train True --data odds_Mammography --epochs 300 --cv_epoch 20 --patience 10
+    CUDA_VISIBLE_DEVICES=0 python main_density_est.py --dx 3 --dy 6 --train True --data odds_Mammography --epochs 300 --cv_epoch 20 --patience 10
     ```
     Model evaluation
     ```shell
-    python results_analyze.py --data odds_Mammography --path path
+    python results_analyze.py --data odds_Mammography --epoch epoch  --path path
     ```
 - ForestCover
 
@@ -180,7 +180,7 @@ One can the following commonds to train a Roundtrip model and evaluate by precis
     ```
     Model evaluation
     ```shell
-    python results_analyze.py --data odds_ForestCover --path path
+    python results_analyze.py --data odds_ForestCover --epoch epoch  --path path
     ```
 The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calculated and printed.
 
