@@ -309,6 +309,7 @@ class RoundtripModel(object):
                 px = 1. / (np.sqrt(2*np.pi)**self.x_dim) * np.exp(-(np.sum((x_points)**2,axis=1))/2.)
                 return px / qx
 
+        #sample a set of points given each x_point from importance distribution
         def sample_from_qx(x_point):
             '''
             multivariate student t distribution can be constructed from a multivariate Gaussian 
@@ -367,7 +368,6 @@ class RoundtripModel(object):
         y_points__ = self.predict_y(x_points_)
         rt_error = np.sum((y_points-y_points__)**2,axis=1)
         #get jocobian matrix with shape (N, y_dim, x_dim)
-        self.J = batch_jacobian(self.y_, self.x)
         jacob_mat = self.get_jacobian(x_points_)
         #jocobian matrix transpose with shape (N, x_dim, y_dim)
         jacob_mat_transpose = jacob_mat.transpose((0,2,1))
