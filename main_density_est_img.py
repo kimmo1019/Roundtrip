@@ -27,12 +27,11 @@ Instructions: Roundtrip model for conditional density estimation (e.g., images)
     Dy(.) - discriminator network in y space (observation space)
 '''
 class RoundtripModel(object):
-    def __init__(self, g_net, h_net, dx_net, dx_net_cat, dy_net, x_sampler, y_sampler, data, pool, batch_size, nb_classes, alpha, beta, df, is_train):
+    def __init__(self, g_net, h_net, dx_net, dy_net, x_sampler, y_sampler, data, pool, batch_size, nb_classes, alpha, beta, df, is_train):
         self.data = data
         self.g_net = g_net
         self.h_net = h_net
         self.dx_net = dx_net
-        self.dx_net_cat = dx_net_cat
         self.dy_net = dy_net
         self.x_sampler = x_sampler
         self.y_sampler = y_sampler
@@ -438,7 +437,6 @@ if __name__ == '__main__':
         g_net = model.Generator_img(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=2,nb_units=256,dataset=data,is_training=False)
     h_net = model.Encoder_img(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=2,nb_units=256,dataset=data,cond=True)
     dx_net = model.Discriminator(input_dim=x_dim,name='dx_net',nb_layers=2,nb_units=128)
-    dx_net_cat = model.Discriminator(input_dim=nb_classes,name='dx_cat_net',nb_layers=2,nb_units=128)
     dy_net = model.Discriminator_img(input_dim=y_dim,name='dy_net',nb_layers=2,nb_units=128,dataset=data)
     pool = util.DataPool()
 
@@ -452,8 +450,8 @@ if __name__ == '__main__':
         sys.exit()
 
 
-    RTM = RoundtripModel(g_net, h_net, dx_net, dx_net_cat, dy_net, xs, ys, data, pool, batch_size, nb_classes, alpha, beta, df, is_train)
-    
+    RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, data, pool, batch_size, nb_classes, alpha, beta, df, is_train)
+
     if args.train:
         RTM.train(epochs=epochs,cv_epoch=cv_epoch,patience=patience)
     else:
