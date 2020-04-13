@@ -75,7 +75,6 @@ def visualize_img():
                     ax = ax.flatten()
                     for i in range(25):
                         ax[i].imshow(combine[i][0],plt.cm.gray)
-                        #ax[i].set_title('%.2f'%combine[i][1])
                     ax[0].set_xticks([])
                     ax[0].set_yticks([])
                     plt.tight_layout(pad=1.08, h_pad=0.2, w_pad=0.2)  
@@ -96,7 +95,6 @@ def visualize_img():
                     ax = ax.flatten()
                     for i in range(25):
                         ax[i].imshow(combine[i][0],plt.cm.gray)
-                        #ax[i].set_title('%.2f'%combine[i][1])
                     ax[0].set_xticks([])
                     ax[0].set_yticks([])
                     plt.tight_layout(pad=1.08, h_pad=0.2, w_pad=0.2)  

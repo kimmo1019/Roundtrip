@@ -135,14 +135,28 @@ Download data from [zenodo repository](https://zenodo.org/record/3748270#.XpFvgd
 One can run the conditional image generation and conditional denstiy estimation simultaneously through the following script.
 
 - MNIST
+
+    Model training
     ```shell
     CUDA_VISIBLE_DEVICES=0 python main_density_est_img.py  --dx 100 --dy 784 --train True --data mnist --epochs 100 --cv_epoch 50 --patience 5
     ```
+    Model test
+    ```shell
+    python main_density_est_img.py  results_analyze.py --data mnist --path path
+    [path] -- path to the frist part of outputs (e.g., data/density_est_YYYYMMDD_HHMMSS_mnist_x_dim=100_y_dim=784_alpha=10.0_beta=10.0)
+    ```
 
 - CIFAR-10
+
+    Model training
     ```shell
     CUDA_VISIBLE_DEVICES=0 python main_density_est_img.py  --dx 100 --dy 3072 --train True --data cifar10 --epochs 1000 --cv_epoch 500 --patience 5
     ```
+    Model test
+    ```shell
+    python main_density_est_img.py  results_analyze.py --data cifar10 --path path
+    ```
+After model test, the generated images can be found in the first part of outputs.
 
 ### Outlier Detection
 
