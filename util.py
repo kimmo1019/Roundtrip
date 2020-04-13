@@ -15,60 +15,6 @@ from collections import Counter
 import cPickle as pickle
 import gzip
 
-#pbmc ~68k single cell RNA-seq data
-class DataSampler(object):
-    def __init__(self):
-        self.train_size = 68260
-        self.total_size = 68260
-        self.test_size = 2000
-        self.X_train, self.X_test = self._load_gene_mtx()
-        self.y_train, self.y_test = self._load_labels()
-    def _read_mtx(self, filename):
-        buf = scipy.io.mmread(filename)
-        return buf
-
-    def _load_gene_mtx(self):
-        data_path = 'data/pbmc68k/filtered_mat.txt'
-        data = np.loadtxt(data_path,delimiter=' ',skiprows=1,usecols=range(1,68261))
-        data = data.T
-        scale = np.max(data)
-        data = data / scale
-        np.random.seed(0)
-        indx = np.random.permutation(np.arange(self.total_size))
-        data_train = data[indx[0:self.train_size], :]
-        data_test = data[indx[-self.test_size:], :]
-
-        return data_train, data_test
-
-    def _load_labels(self):
-        data_path = 'data/pbmc68k/label_info.txt'
-        labels = np.array([int(item.split('\t')[-1].strip()) for item in open(data_path).readlines()])
-        np.random.seed(0)
-        indx = np.random.permutation(np.arange(self.total_size))
-        labels_train = labels[indx[0:self.train_size]]
-        labels_test = labels[indx[-self.test_size:]]
-        return labels_train, labels_test
-
-    # for data sampling given batch size
-    def train(self, batch_size, label = False):
-        indx = np.random.randint(low = 0, high = self.train_size, size = batch_size)
-
-        if label:
-            return self.X_train[indx, :], self.y_train[indx].flatten()
-        else:
-            return self.X_train[indx, :]
-
-    def validation(self):
-        return self.X_train[-5000:,:], self.y_train[-5000:].flatten()
-    
-    def training(self):
-        return self.X_train, self.y_train
-    
-    def test(self):
-        return self.X_test, self.y_test
-
-    def load_all(self):
-         return np.concatenate((self.X_train, self.X_test)), np.concatenate((self.y_train, self.y_test))
 
 #outliner dataset (http://odds.cs.stonybrook.edu/)
 class Outlier_sampler(object):
@@ -130,122 +76,6 @@ class UCI_sampler(object):
     def load_all(self):
         return self.X_train, None
 
-#miniboone dataset
-class miniboone_sampler(object):
-    def __init__(self,data_path='/home/liuqiao/software/maf/data/miniboone/data.npy'):
-        data = np.load(data_path)
-        self.X_train, self.X_val,self.X_test = self.normalize(data)
-        self.Y=None
-        self.nb_train = self.X_train.shape[0]
-        self.mean = 0
-        self.sd = 0
-    def normalize(self,data):
-        N_test = int(0.1*data.shape[0])
-        data_test = data[-N_test:]
-        data = data[0:-N_test]
-        N_validate = int(0.1*data.shape[0])
-        data_validate = data[-N_validate:]
-        data_train = data[0:-N_validate]
-        data = np.vstack((data_train, data_validate))
-        mu = data.mean(axis=0)
-        s = data.std(axis=0)
-        data_train = (data_train - mu)/s
-        data_validate = (data_validate - mu)/s
-        data_test = (data_test - mu)/s
-        return data_train, data_validate, data_test
-    def train(self, batch_size, label = False):
-        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
-        if label:
-            return self.X_train[indx, :], self.Y[indx]
-        else:
-            return self.X_train[indx, :]
-    def load_all(self):
-        return self.X_train, None
-#power dataset
-class power_sampler(object):
-    def __init__(self,data_path='/home/liuqiao/software/maf/data/power/data.npy'):
-        data = np.load(data_path)
-        self.X_train, self.X_val,self.X_test = self.normalize(data)
-        self.nb_train = self.X_train.shape[0]
-        self.Y=None
-        self.mean = 0
-        self.sd = 0
-    def normalize(self,data):
-        rng = np.random.RandomState(42)
-        rng.shuffle(data)
-        N = data.shape[0]
-        data = np.delete(data, 3, axis=1)
-        data = np.delete(data, 1, axis=1)
-        voltage_noise = 0.01*rng.rand(N, 1)
-        gap_noise = 0.001*rng.rand(N, 1)
-        sm_noise = rng.rand(N, 3)
-        time_noise = np.zeros((N, 1))
-        noise = np.hstack((gap_noise, voltage_noise, sm_noise, time_noise))
-        data = data + noise
-        N_test = int(0.1*data.shape[0])
-        data_test = data[-N_test:]
-        data = data[0:-N_test]
-        N_validate = int(0.1*data.shape[0])
-        data_validate = data[-N_validate:]
-        data_train = data[0:-N_validate]
-        data = np.vstack((data_train, data_validate))
-        mu = data.mean(axis=0)
-        s = data.std(axis=0)
-        data_train = (data_train - mu)/s
-        data_validate = (data_validate - mu)/s
-        data_test = (data_test - mu)/s
-        return data_train, data_validate, data_test
-    def train(self, batch_size, label = False):
-        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
-        if label:
-            return self.X_train[indx, :], self.Y[indx]
-        else:
-            return self.X_train[indx, :]
-    def load_all(self):
-        return self.X_train, None
-
-#power dataset
-class gas_sampler(object):
-    def __init__(self,data_path='/home/liuqiao/software/maf/data/gas/ethylene_CO.pickle'):
-        data = pd.read_pickle(data_path)
-        self.X_train, self.X_val,self.X_test = self.normalize(data)
-        self.nb_train = self.X_train.shape[0]
-        self.Y=None
-        self.mean = 0
-        self.sd = 0
-    def normalize(self,data):
-        data.drop("Meth", axis=1, inplace=True)
-        data.drop("Eth", axis=1, inplace=True)
-        data.drop("Time", axis=1, inplace=True)
-        C = data.corr()
-        A = C > 0.98
-        B = A.as_matrix().sum(axis=1)
-        while np.any(B > 1):
-            col_to_remove = np.where(B > 1)[0][0]
-            col_name = data.columns[col_to_remove]
-            data.drop(col_name, axis=1, inplace=True)
-            C = data.corr()
-            A = C > 0.98
-            B = A.as_matrix().sum(axis=1)
-        data = (data-data.mean())/data.std()
-        data = data.as_matrix()
-        N_test = int(0.1*data.shape[0])
-        data_test = data[-N_test:]
-        data_train = data[0:-N_test]
-        N_validate = int(0.1*data_train.shape[0])
-        data_validate = data_train[-N_validate:]
-        data_train = data_train[0:-N_validate]
-        return data_train, data_validate, data_test
-
-    def train(self, batch_size, label = False):
-        indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
-        if label:
-            return self.X_train[indx, :], self.Y[indx]
-        else:
-            return self.X_train[indx, :]
-    def load_all(self):
-        return self.X_train, None
-
 #HEPMASS dataset
 class hepmass_sampler(object):
     def __init__(self,data_path='datasets/HEPMASS/'):
@@ -295,17 +125,22 @@ class hepmass_sampler(object):
         return self.X_train, None
 
 class mnist_sampler(object):
-    def __init__(self,data_path='/home/liuqiao/software/maf/data/mnist/mnist.pkl.gz'):
+    def __init__(self,data_path='datasets/mnist/mnist.pkl.gz'):
         f = gzip.open(data_path, 'rb')
         trn, val, tst = pickle.load(f)
         self.trn_data = trn[0]
         self.trn_label = trn[1]
         self.trn_one_hot = np.eye(10)[self.trn_label]
+
         self.tst_data = tst[0]
         self.tst_label = tst[1]
+        self.tst_one_hot = np.eye(10)[self.tst_label]
+
+        self.val_data = val[0]
+        self.val_label = val[1]
+        self.val_one_hot = np.eye(10)[self.val_label]
+
         self.N = self.trn_data.shape[0]
-        self.mean = 0
-        self.sd = 0
     def train(self, batch_size, indx = None, label = False):
         if indx is None:
             indx = np.random.randint(low = 0, high = self.N, size = batch_size)
@@ -314,10 +149,10 @@ class mnist_sampler(object):
         else:
             return self.trn_data[indx, :]
     def load_all(self):
-        return self.trn_data, self.trn_label, self.trn_one_hot
+        return self.tst_data, self.tst_label, self.tst_one_hot
 
 class cifar10_sampler(object):
-    def __init__(self,data_path='/home/liuqiao/software/maf/data/cifar10'):
+    def __init__(self,data_path='datasets/cifar10'):
         trn_data = []
         trn_label = []
         for i in xrange(1, 6):
@@ -333,7 +168,11 @@ class cifar10_sampler(object):
         self.trn_data = trn_data.reshape(trn_data.shape[0],-1)
         self.trn_label = np.concatenate(trn_label, axis=0)
         self.trn_one_hot = np.eye(10)[self.trn_label]
-        self.N = self.trn_data.shape[0]
+        self.val_data = self.trn_data[-int(0.1*(len(self.trn_data))):]
+        self.val_label = self.trn_label[-int(0.1*(len(self.trn_label))):]
+        self.val_one_hot = self.trn_one_hot[-int(0.1*(len(self.trn_one_hot))):]
+        self.N = len(self.trn_data)-len(self.val_data)
+
         f = open(data_path + '/test_batch', 'rb')
         dict = pickle.load(f)
         tst_data = dict['data']
@@ -342,8 +181,7 @@ class cifar10_sampler(object):
         tst_data = tst_data/256.0
         self.tst_data = tst_data.reshape(tst_data.shape[0],-1)
         self.tst_label = np.array(dict['labels'])
-        self.mean = 0
-        self.sd = 0
+        self.tst_one_hot = np.eye(10)[self.tst_label]
     def train(self, batch_size, indx = None, label = False):
         if indx is None:
             indx = np.random.randint(low = 0, high = self.N, size = batch_size)
@@ -352,7 +190,7 @@ class cifar10_sampler(object):
         else:
             return self.trn_data[indx, :]
     def load_all(self):
-        return self.trn_data, self.trn_label, self.trn_one_hot
+        return self.tst_data, self.tst_label, self.tst_one_hot
 
 # Gaussian mixture sampler
 class GMM_sampler(object):
@@ -708,5 +546,11 @@ class DataPool(object):
 
 
 if __name__=='__main__':
+    ys = cifar10_sampler()
+    print ys.trn_data.shape
+    print ys.tst_data.shape
+    print ys.val_data.shape
+    sys.exit()
+
     ys = UCI_sampler('datasets/YearPredictionMSD/data.npy')
     print ys.X_train.shape, ys.X_val.shape,ys.X_test.shape
