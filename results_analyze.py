@@ -58,6 +58,53 @@ def precision_at_K(score, label_test):
     nb_test = np.sum(label_test)
     precision = len([1 for item in zip(rank,label_test) if item[0]<=nb_test and item[1]==1])*1.0/nb_test
     return precision
+    
+def visualize_img():
+    if data == "mnist":
+        for each in os.listdir(path):
+            if each.startswith('py'):
+                py = np.load('%s/%s'%(path, each))['arr_0']
+                data_y_ = np.load('%s/%s'%(path, each))['arr_1']
+                label_y = np.load('%s/%s'%(path, each))['arr_2']
+                data_y_ = data_y_.reshape(data_y_.shape[0],28,28)
+                for j in range(10):
+                    idx = [i for i,item in enumerate(label_y) if item==j]
+                    data_y_class_ = data_y_[idx]
+                    combine = sorted(zip(data_y_class_[:25],py[25*j:25*(j+1)]),key=lambda x:x[1],reverse=True)
+                    fig, ax = plt.subplots(nrows=5, ncols=5, sharex='all', sharey='all',figsize=(10,10))
+                    ax = ax.flatten()
+                    for i in range(25):
+                        ax[i].imshow(combine[i][0],plt.cm.gray)
+                        #ax[i].set_title('%.2f'%combine[i][1])
+                    ax[0].set_xticks([])
+                    ax[0].set_yticks([])
+                    plt.tight_layout(pad=1.08, h_pad=0.2, w_pad=0.2)  
+                    plt.savefig('%s/mnist_pre_class_%d.png'%(path,j))
+                    plt.show()
+    else:
+        for each in os.listdir(path):
+            if each.startswith('py'):
+                py = np.load('%s/%s'%(path, each))['arr_0']
+                data_y_ = np.load('%s/%s'%(path, each))['arr_1']
+                label_y = np.load('%s/%s'%(path, each))['arr_2']
+                data_y_ = data_y_.reshape(data_y_.shape[0],32,32,3)
+                for j in range(10):
+                    idx = [i for i,item in enumerate(label_y) if item==j]
+                    data_y_class_ = data_y_[idx]
+                    combine = sorted(zip(data_y_class_[:25],py[25*j:25*(j+1)]),key=lambda x:x[1],reverse=True)
+                    fig, ax = plt.subplots(nrows=5, ncols=5, sharex='all', sharey='all',figsize=(10,10))
+                    ax = ax.flatten()
+                    for i in range(25):
+                        ax[i].imshow(combine[i][0],plt.cm.gray)
+                        #ax[i].set_title('%.2f'%combine[i][1])
+                    ax[0].set_xticks([])
+                    ax[0].set_yticks([])
+                    plt.tight_layout(pad=1.08, h_pad=0.2, w_pad=0.2)  
+                    plt.savefig('%s/cifar10_pre_class_%d.png'%(path,j))
+                    plt.show()
+
+
+
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser('')
@@ -87,7 +134,7 @@ if __name__=="__main__":
     path = args.path
     timestamp = args.timestamp
 
-    save_dir = 'data/density_est/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(timestamp, data, x_dim, y_dim, alpha, beta)
+    save_dir = 'data/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(timestamp, data, x_dim, y_dim, alpha, beta)
     g_net = model.Generator(input_dim=x_dim,output_dim = y_dim,name='g_net',nb_layers=10,nb_units=512)
     h_net = model.Generator(input_dim=y_dim,output_dim = x_dim,name='h_net',nb_layers=10,nb_units=256)
     dx_net = model.Discriminator(input_dim=x_dim,name='dx_net',nb_layers=2,nb_units=128)
@@ -116,5 +163,9 @@ if __name__=="__main__":
         else:
             print("Wrong ODDS data name!")
             sys.exit()
+    elif data == "mnist":
+        visualize_img()
+    elif data == "cifar10":
+        visualize_img()
     else:
         print("Wrong data name!")

@@ -174,12 +174,15 @@ class RoundtripModel(object):
                         (epoch, counter, time.time() - start_time, g_loss_adv, h_loss_adv, l2_loss_x, l2_loss_y, \
                         g_loss, h_loss, g_h_loss, dx_loss, dy_loss, d_loss))                 
                 counter+=1
-            if (epoch+1) % 10 == 0:
-                self.save(epoch)
-                self.evaluate(epoch)
             if epoch+1 == epochs:
                 self.save(epoch)
-                self.density_est(epoch)
+                data_x, _ = self.x_sampler.load_all()
+                _, tst_label, tst_one_hot = self.y_sampler.load_all()
+                data_y_ = self.predict_y(data_x, tst_one_hot)
+                eval_idx = []
+                for i in range(self.nb_classes):
+                    eval_idx += [j for j,item in enumerate(tst_label) if item==i][:25]
+                self.estimate_py_with_IS(data_y_[eval_idx],tst_label[eval_idx],tst_one_hot[eval_idx],epoch,sd_y=0.3,scale=0.001,sample_size=40000,log=True,save=True)
 
     #predict with y_=G(x)
     def predict_y(self, x, x_d, bs=256):
@@ -228,7 +231,7 @@ class RoundtripModel(object):
         return jcob_pred
 
     #estimate pdf of y (e.g., p(y)) with importance sampling
-    def estimate_py_with_IS(self,y_points,onehot_label,epoch,sd_y=0.5,scale=0.5,sample_size=40000,bs=1024,log=True,save=True):
+    def estimate_py_with_IS(self,y_points,y_label,onehot_label,epoch,sd_y=0.5,scale=0.5,sample_size=40000,bs=1024,log=True,save=True):
         np.random.seed(1024)
         from scipy.stats import t
         from multiprocessing.dummy import Pool as ThreadPool
@@ -315,11 +318,11 @@ class RoundtripModel(object):
             py_list = map(lambda x, y: x*y,py_given_x_list,w_likelihood_ratio_list)
             py_est = np.array([np.mean(item) for item in py_list])
         if save:
-            np.savez('%s/py_est_at_epoch%d_sd%f_scale%f.npz'%(self.save_dir,epoch,sd_y,scale), py_est, y_points)
+            np.savez('%s/py_est_at_epoch%d_sd%f_scale%f.npz'%(self.save_dir,epoch,sd_y,scale), py_est, y_points,y_label)
         return py_est
 
     #estimate pdf of y (e.g., p(y)) with Laplace approximation (closed-from)
-    def estimate_py_with_CF(self,y_points,onehot_label,epoch,sd_y=0.5,log=True,save=True):
+    def estimate_py_with_CF(self,y_points,y_label,onehot_label,epoch,sd_y=0.5,log=True,save=True):
         from scipy.stats import t
         from multiprocessing.dummy import Pool as ThreadPool
 
@@ -354,26 +357,8 @@ class RoundtripModel(object):
         else:
             py_est = map(lambda x,y: 1./(np.sqrt(2*np.pi)*sd_y)**self.y_dim* sd_y**self.y_dim *np.sqrt(np.linalg.det(x)) * np.exp(-0.5*y), Sigma, c_y)
         if save:
-            np.savez('%s/py_est_at_epoch%d_sd%f_cf.npz'%(self.save_dir,epoch,sd_y), py_est, y_points)
+            np.savez('%s/py_est_at_epoch%d_sd%f_cf.npz'%(self.save_dir,epoch,sd_y), py_est, y_points, y_label)
         return py_est
-
-    def evaluate(self,epoch):
-        data_x, _ = self.x_sampler.load_all()
-        data_y, data_label, data_onehot = self.y_sampler.load_all()
-        data_x_ = self.predict_x(data_y)
-        data_y_ = self.predict_y(data_x,data_onehot)
-        np.savez('{}/data_at_{}.npz'.format(self.save_dir, epoch),data_x,data_label,data_y,data_x_,data_y_)
-    
-    def density_est(self,epoch,nb_per_class=25):
-        data_y, data_label, data_onehot = self.y_sampler.load_all()
-        data = np.load('{}/data_at_{}.npz'.format(self.save_dir, epoch))
-        data_label = data['arr_1']
-        data_y_ = data['arr_4']
-        eval_idx = []
-        for i in range(self.nb_classes):
-            eval_idx += [j for j,item in enumerate(data_label) if item==i][:nb_per_class]
-        self.estimate_py_with_IS(data_y_[eval_idx],data_onehot[eval_idx],epoch,sd_y=0.3,scale=0.001,sample_size=40000,log=True,save=True)
-        
 
     def save(self,epoch):
 
@@ -440,7 +425,7 @@ if __name__ == '__main__':
     dy_net = model.Discriminator_img(input_dim=y_dim,name='dy_net',nb_layers=2,nb_units=128,dataset=data)
     pool = util.DataPool()
 
-    xs = util.Gaussian_sampler(N=5000,mean=np.zeros(x_dim),sd=1.0)
+    xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
     if data=='mnist':
         ys = util.mnist_sampler()
     elif data=='cifar10':
