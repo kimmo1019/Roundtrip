@@ -203,7 +203,7 @@ The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calc
 
 ## Related Applications
 
-Roundtrip has various applications including unsupervised learning, likelihood-free inference and sequencial sequantial Markov chain Monte Carlo. We are working on some of the applications now, always open to cooperation opportunities. If you're interested, do not hesitate to contact me.
+Roundtrip has various downstream applications including unsupervised learning, likelihood-free inference and sequencial sequantial Markov chain Monte Carlo. We are working on some of the applications now, always open to cooperation opportunities. If you're interested, do not hesitate to contact me.
 
 ## Contact
 
