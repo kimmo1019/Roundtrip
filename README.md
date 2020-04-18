@@ -40,7 +40,7 @@ This section provides instructions on how to reproduce results in the original p
 
 We tested Roundtrip on three types of simulation datasets. (1) Indepedent Gaussian mixture. (2) 8-octagon Gaussian mixture. (3) Involute.
 
-The main python script `main_density_est.py` is used for implementing Roundtrip with simulation data. Model architecture for Roundtrip can be find in `model.py`. Data loader or data sampler can be find in `util.py`.
+The main python script `main_density_est.py` is used for implementing Roundtrip. Model architecture for Roundtrip can be find in `model.py`. Data loader or data sampler can be find in `util.py`.
 
 Taking the (1) for an example, one can run the following commond to train a Roundtrip model with indepedent Gaussian mixture data.
 
@@ -160,7 +160,7 @@ After model test, the generated images can be found in the first part of outputs
 
 ### Outlier Detection
 
-We introduced three outlier detection datasets (Shuttle, Mammography, and ForestCover) from ODDS library. Download the three datasets (`ODDS.tar.gz`) from the [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Uncompress it under the `data` folder.
+We introduced three outlier detection datasets (Shuttle, Mammography, and ForestCover) from [ODDS library](http://odds.cs.stonybrook.edu/). Download the three datasets (`ODDS.tar.gz`) from the [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Uncompress it under the `data` folder.
 
 One can the following commonds to train a Roundtrip model and evaluate by precision at K. 
 
