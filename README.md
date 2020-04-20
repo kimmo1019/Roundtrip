@@ -30,7 +30,7 @@ Roundtrip can be downloaded by
 ```shell
 git clone https://github.com/kimmo1019/Roundtrip
 ```
-Installation has been tested in a Linux/MacOS platform.
+Software has been tested in a Linux/MacOS platform with Python2.7.
 
 ## Reproduction
 
