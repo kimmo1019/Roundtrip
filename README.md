@@ -3,7 +3,7 @@
 ![model](https://github.com/kimmo1019/Roundtrip/blob/master/model.jpg)
 
 
-Roundtrip is a deep generative neural density estimator which exploits the advantage of GANs for generating samples and estimates density by either importance sampling or Laplace approximation. This repository provides source code and instructions for reproducing results in our paper, including simulation data and real data. 
+Roundtrip is a deep generative neural density estimator which exploits the advantage of GANs for generating samples and estimates density by either importance sampling or Laplace approximation. This repository provides source code and instructions for reproducing results in our [paper](https://arxiv.org/abs/2004.09017), including simulation data and real data. 
 
 ## Table of Contents
 
@@ -211,7 +211,17 @@ Feel free to open an issue in Github or contact `liu-q16@mails.tsinghua.edu.cn` 
 
 ## Cite
 
-If you use Roundtrip in your research, please consider cite our paper 
+If you use Roundtrip in your research, please consider citing our paper 
+```
+@misc{liu2020roundtrip,
+    title={Roundtrip: A Deep Generative Neural Density Estimator},
+    author={Qiao Liu and Jiaze Xu and Rui Jiang and Wing Hung Wong},
+    year={2020},
+    eprint={2004.09017},
+    archivePrefix={arXiv},
+    primaryClass={cs.LG}
+}
+```
 
 ## License
 
