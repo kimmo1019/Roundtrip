@@ -408,7 +408,7 @@ class RoundtripModel(object):
                 print('Best Timestamp not provided.')
                 checkpoint_dir = ''
             else:
-                checkpoint_dir = 'checkpoint/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
+                checkpoint_dir = 'checkpoint/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
                 self.saver.restore(self.sess, os.path.join(checkpoint_dir, 'model.ckpt-%d'%epoch))
                 print('Restored model weights.')
 
