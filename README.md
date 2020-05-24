@@ -61,7 +61,7 @@ After training the model, you will have three part of outputs, which are marked 
  
  3) The training loss curves were recorded at folder `graph/density_est_YYYYMMDD_HHMMSS_indep_gmm_x_dim=2_y_dim=2_alpha=10.0_beta=10.0`, which can be visualized using TensorBoard.
 
- Next, we want to visulize the estimated density on a 2D region. One can then run the following script
+ Next, we want to visulize the estimated density on a 2D region. One can then run the following script. 
 
  ```shell
  CUDA_VISIBLE_DEVICES=0 python results_analyze.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data indep_gmm --epoch epoch
