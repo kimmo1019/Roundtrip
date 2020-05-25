@@ -141,7 +141,7 @@ One can run the conditional image generation and conditional denstiy estimation 
     ```
     Model test
     ```shell
-    python main_density_est_img.py  results_analyze.py --data mnist --path path
+    python results_analyze.py --data mnist --path path
     [path] -- path to the frist part of outputs (e.g., data/density_est_YYYYMMDD_HHMMSS_mnist_x_dim=100_y_dim=784_alpha=10.0_beta=10.0)
     ```
 
@@ -153,7 +153,7 @@ One can run the conditional image generation and conditional denstiy estimation 
     ```
     Model test
     ```shell
-    python main_density_est_img.py  results_analyze.py --data cifar10 --path path
+    python results_analyze.py --data cifar10 --path path
     ```
 After model test, the generated images can be found in the first part of outputs.
 
@@ -161,13 +161,13 @@ After model test, the generated images can be found in the first part of outputs
 
 We introduced three outlier detection datasets (Shuttle, Mammography, and ForestCover) from [ODDS library](http://odds.cs.stonybrook.edu/). Download the three datasets (`ODDS.tar.gz`) from the [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Uncompress it under the `data` folder.
 
-One can the following commonds to train a Roundtrip model and evaluate by precision at K. 
+One can run the following commonds to train a Roundtrip model and evaluate by precision at K.
 
 - Shuttle
 
     Model training
     ```shell
-    CUDA_VISIBLE_DEVICES=0 python main_density_est.py  --dx 3 --dy 9 --train True --data odds_Shuttle --epochs 300 --cv_epoch 20 --patience 10
+    CUDA_VISIBLE_DEVICES=0 python main_density_est.py  --dx 3 --dy 9 --train True --data odds_Shuttle --epochs 300 --cv_epoch 30 --patience 10
     ```
     Model evaluation
     ```shell
@@ -179,24 +179,23 @@ One can the following commonds to train a Roundtrip model and evaluate by precis
 
     Model training
     ```shell
-    CUDA_VISIBLE_DEVICES=0 python main_density_est.py --dx 3 --dy 6 --train True --data odds_Mammography --epochs 300 --cv_epoch 20 --patience 10
+    CUDA_VISIBLE_DEVICES=0 python main_density_est.py --dx 3 --dy 6 --train True --data odds_Mammography --epochs 300 --cv_epoch 30 --patience 10
     ```
     Model evaluation
     ```shell
-    python results_analyze.py --data odds_Mammography --epoch epoch  --path path
+    python results_analyze.py --data odds_Mammography --epoch epoch --path path
     ```
 - ForestCover
 
     Model training
     ```shell
-    CUDA_VISIBLE_DEVICES=0 python main_density_est.py  --dx 4 --dy 10 --train True --data odds_ForestCover --epochs 300 --cv_epoch 20 --patience 10
+    CUDA_VISIBLE_DEVICES=0 python main_density_est.py --dx 4 --dy 10 --train True --data odds_ForestCover --epochs 300 --cv_epoch 30 --patience 10
     ```
     Model evaluation
     ```shell
     python results_analyze.py --data odds_ForestCover --epoch epoch  --path path
     ```
 The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calculated and printed.
-
 
 ## Contact
 
