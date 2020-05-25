@@ -67,7 +67,7 @@ After training the model, you will have three part of outputs, which are marked 
  Next, we want to visulize the estimated density on a 2D region. One can then run the following script. 
 
  ```shell
- CUDA_VISIBLE_DEVICES=0 python results_analyze.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data indep_gmm --epoch epoch
+ CUDA_VISIBLE_DEVICES=0 python evaluate.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data indep_gmm --epoch epoch
  [YYYYMMDD_HHMMSS] --  timestamp in the last training step
  [epoch] -- epoch for loading model weights
  ```
@@ -83,7 +83,7 @@ After training the model, you will have three part of outputs, which are marked 
     ```
     Density esitmation on a 2D grid region:
     ```shell
-    CUDA_VISIBLE_DEVICES=0 python results_analyze.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data eight_octagon_gmm --epoch epoch
+    CUDA_VISIBLE_DEVICES=0 python evaluate.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data eight_octagon_gmm --epoch epoch
     ```
 - involute
     Model training:
@@ -92,7 +92,7 @@ After training the model, you will have three part of outputs, which are marked 
     ```
     Density esitmation on a 2D grid region:
     ```shell
-    CUDA_VISIBLE_DEVICES=0 python results_analyze.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data involute --epoch epoch
+    CUDA_VISIBLE_DEVICES=0 python evaluate.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data involute --epoch epoch
     ```
 
 ### Real Data
@@ -144,7 +144,7 @@ One can run the conditional image generation and conditional denstiy estimation 
     ```
     Model test
     ```shell
-    python results_analyze.py --data mnist --path path
+    python evaluate.py --data mnist --path path
     [path] -- path to the frist part of outputs (e.g., data/density_est_YYYYMMDD_HHMMSS_mnist_x_dim=100_y_dim=784_alpha=10.0_beta=10.0)
     ```
 
@@ -156,7 +156,7 @@ One can run the conditional image generation and conditional denstiy estimation 
     ```
     Model test
     ```shell
-    python results_analyze.py --data cifar10 --path path
+    python evaluate.py --data cifar10 --path path
     ```
 After model test, the generated images can be found in the first part of outputs.
 
@@ -174,7 +174,7 @@ One can run the following commonds to train a Roundtrip model and evaluate by pr
     ```
     Model evaluation
     ```shell
-    python results_analyze.py --data odds_Shuttle --epoch epoch --path path
+    python evaluate.py --data odds_Shuttle --epoch epoch --path path
     [epoch] -- epoch for loading model weights (e.g., epoch recorded in the last line in log_test.txt)
     [path] -- path to the frist part of outputs (e.g., data/density_est_YYYYMMDD_HHMMSS_odds_Shuttle_x_dim=3_y_dim=9_alpha=10.0_beta=10.0)
     ```
@@ -186,7 +186,7 @@ One can run the following commonds to train a Roundtrip model and evaluate by pr
     ```
     Model evaluation
     ```shell
-    python results_analyze.py --data odds_Mammography --epoch epoch --path path
+    python evaluate.py --data odds_Mammography --epoch epoch --path path
     ```
 - ForestCover
 
@@ -196,7 +196,7 @@ One can run the following commonds to train a Roundtrip model and evaluate by pr
     ```
     Model evaluation
     ```shell
-    python results_analyze.py --data odds_ForestCover --epoch epoch  --path path
+    python evaluate.py --data odds_ForestCover --epoch epoch  --path path
     ```
 The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calculated and printed.
 
