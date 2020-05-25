@@ -22,6 +22,9 @@ Roundtrip is a deep generative neural density estimator which exploits the advan
 ## Requirements
 
 - TensorFlow=1.13.1
+- scikit-learn==0.19.0
+
+The related software dependencies can be installed by `pip install -r requirement.txt`
 
 ## Install
 
