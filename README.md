@@ -3,7 +3,7 @@
 ![model](https://github.com/kimmo1019/Roundtrip/blob/master/model.jpg)
 
 
-Roundtrip is a deep generative neural density estimator which exploits the advantage of GANs for generating samples and estimates density by either importance sampling or Laplace approximation. This repository provides source code and instructions for reproducing results in our [paper](https://arxiv.org/abs/2004.09017), including simulation data and real data. Note that the supplementary file of Roundtrip paper is also provided in this repository.
+Roundtrip is a deep generative neural density estimator which exploits the advantage of GANs for generating samples and estimates density by either importance sampling or Laplace approximation. This repository provides source code and instructions for reproducing results in our [paper](https://arxiv.org/abs/2004.09017), including simulation data and real data.
 
 ## Table of Contents
 
@@ -199,7 +199,7 @@ The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calc
 
 ## Contact
 
-Roundtrip has various downstream applications including unsupervised learning, likelihood-free Bayesian inference and sequential Markov chain Monte Carlo (MCMC). We are working on some of the applications now, always open to cooperation opportunities. If you're interested, do not hesitate to contact me.
+Roundtrip has various downstream applications including unsupervised learning, likelihood-free Bayesian inference and sequential Markov chain Monte Carlo (MCMC). Always open to cooperation opportunities. If you're interested, do not hesitate to contact me.
 
 Also Feel free to open an issue in Github or contact `liu-q16@mails.tsinghua.edu.cn` if you have any problem in Roundtrip.
 
