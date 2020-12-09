@@ -1,13 +1,6 @@
 from __future__ import division
-import scipy.sparse
-import scipy.io
 import numpy as np
 import copy
-from scipy.special import polygamma
-import scipy.special
-from scipy.stats import t, uniform, norm, truncnorm, invgamma, gamma
-from scipy import pi
-from tqdm import tqdm
 import sys
 import pandas as pd
 from os.path import join
@@ -547,10 +540,3 @@ class DataPool(object):
 
 if __name__=='__main__':
     ys = cifar10_sampler()
-    print ys.trn_data.shape
-    print ys.tst_data.shape
-    print ys.val_data.shape
-    sys.exit()
-
-    ys = UCI_sampler('datasets/YearPredictionMSD/data.npy')
-    print ys.X_train.shape, ys.X_val.shape,ys.X_test.shape
