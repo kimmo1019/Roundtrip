@@ -120,7 +120,7 @@ class RoundtripModel(object):
         if not os.path.exists(self.save_dir) and is_train:
             os.makedirs(self.save_dir)
 
-        self.saver = tf.train.Saver(max_to_keep=500)
+        self.saver = tf.train.Saver(max_to_keep=5000)
 
         run_config = tf.ConfigProto()
         run_config.gpu_options.per_process_gpu_memory_fraction = 1.0
@@ -182,18 +182,18 @@ class RoundtripModel(object):
                 f_val.write('epoch\taverage_likelihood\tstandard_deviation\n')
                 f_test.write('epoch\taverage_likelihood\tstandard_deviation\n')
             if epoch >= cv_epoch:
-                py_est_val = self.estimate_py_with_IS(data_y_val,epoch,sd_y=best_sd,scale=best_scale,sample_size=40000,log=True,save=False)
+                self.save(epoch)
+                py_est_val = self.estimate_py_with_IS(data_y_val,epoch,sd_y=best_sd,scale=best_scale,sample_size=2000,log=True,save=False)
                 average_likelihood_val = np.mean(py_est_val)
                 sd_likelihood_val = np.std(py_est_val)/np.sqrt(len(py_est_val))
                 f_val.write('%d\t%f\t%f\n'%(epoch,average_likelihood_val,sd_likelihood_val))
                 if average_likelihood_val > best_likelihood_val:
                     best_likelihood_val = average_likelihood_val
                     wait=0
-                    py_est_test = self.estimate_py_with_IS(data_y_test,epoch,sd_y=best_sd,scale=best_scale,sample_size=40000,log=True)
+                    py_est_test = self.estimate_py_with_IS(data_y_test,epoch,sd_y=best_sd,scale=best_scale,sample_size=2000,log=True)
                     average_likelihood_test = np.mean(py_est_test)
                     sd_likelihood_test = np.std(py_est_test)/np.sqrt(len(py_est_test))
                     f_test.write('%d\t%f\t%f\n'%(epoch,average_likelihood_test,sd_likelihood_test))
-                    self.save(epoch)
                 else:
                     wait+=1
                     if wait>patience or epoch+1==epochs:
@@ -283,8 +283,7 @@ class RoundtripModel(object):
             '''
             x_points = zip_list[0]
             y_point = zip_list[1]
-            y_points_ = self.predict_y(x_points)
-            y_points_ = y_points_.astype('float64')
+            y_points_ = self.predict_y(x_points,bs=bs)
             if log:
                 return -self.y_dim*np.log((np.sqrt(2*np.pi)*sd_y))-(np.sum((y_point-y_points_)**2,axis=1))/(2.*sd_y**2)
             else:
@@ -298,8 +297,6 @@ class RoundtripModel(object):
             '''
             x_point = zip_list[0]
             x_points = zip_list[1]
-            x_point = x_point.astype('float64')
-            x_points = x_points.astype('float64')
             if log:
                 log_qx = np.sum(t.logpdf(x_point-x_points,self.df,loc=0,scale=scale),axis=1)
                 log_px = -self.x_dim*np.log(np.sqrt(2*np.pi))-(np.sum((x_points)**2,axis=1))/2.
@@ -320,8 +317,7 @@ class RoundtripModel(object):
             z2 = np.random.multivariate_normal(np.zeros(self.x_dim),S,(sample_size,))
             return x_point + z2/np.sqrt(z1)[:,None]
             #return np.hstack([t.rvs(self.df, loc=value, scale=scale, size=(sample_size,1), random_state=None) for value in x_point])
-
-        x_points_ = self.predict_x(y_points)
+        x_points_ = self.predict_x(y_points,bs=bs)
         N = len(y_points)
         py_given_x_list=[]
         w_likelihood_ratio_list=[]
@@ -348,7 +344,7 @@ class RoundtripModel(object):
             py_list = map(lambda x, y: x*y,py_given_x_list,w_likelihood_ratio_list)
             py_est = np.array([np.mean(item) for item in py_list])
         if save:
-            np.savez('%s/py_est_at_epoch%d_sd%f_scale%f.npz'%(self.save_dir,epoch,sd_y,scale), py_est, y_points)
+            np.save('%s/py_est_at_epoch%d.npy'%(self.save_dir,epoch), py_est)
         return py_est
 
     #estimate pdf of y (e.g., p(y)) with Laplace approximation (closed-from)
@@ -387,7 +383,7 @@ class RoundtripModel(object):
         else:
             py_est = map(lambda x,y: 1./(np.sqrt(2*np.pi)*sd_y)**self.y_dim* sd_y**self.y_dim *np.sqrt(np.linalg.det(x)) * np.exp(-0.5*y), Sigma, c_y)
         if save:
-            np.savez('%s/py_est_at_epoch%d_sd%f_cf.npz'%(self.save_dir,epoch,sd_y), py_est, y_points)
+            np.save('%s/py_est_at_epoch%d.npy'%(self.save_dir,epoch), py_est)
         return py_est
 
     def save(self,epoch):
@@ -402,7 +398,7 @@ class RoundtripModel(object):
 
         if pre_trained == True:
             print('Loading Pre-trained Model...')
-            checkpoint_dir = 'pre_trained_models/{}/{}_{}_{}_{}}'.format(self.data, self.x_dim,self.y_dim, self.alpha, self.beta)
+            checkpoint_dir = 'pre_trained_models/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,self.y_dim, self.alpha, self.beta)
         else:
             if timestamp == '':
                 print('Best Timestamp not provided.')
@@ -527,5 +523,5 @@ if __name__ == '__main__':
             timestamp = 'pre-trained'
         else:
             RTM.load(pre_trained=False, timestamp = timestamp, epoch = epochs-1)
-            
+
             

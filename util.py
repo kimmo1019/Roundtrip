@@ -130,16 +130,17 @@ class mnist_sampler(object):
         trn, val, tst = pickle.load(f)
         self.trn_data = trn[0]
         self.trn_label = trn[1]
+        self.val_data = val[0]
+        self.val_label = val[1]
+        
+        self.trn_data = np.concatenate([self.trn_data,self.val_data],axis=0)
+        self.trn_label = np.concatenate([self.trn_label,self.val_label],axis=0)
         self.trn_one_hot = np.eye(10)[self.trn_label]
-
+        self.trn_data_per_class = [self.trn_data[self.trn_label==i] for i in range(10)]
+        self.nb_trn_data_per_class = [len(self.trn_data_per_class[i]) for i in range(10)]
         self.tst_data = tst[0]
         self.tst_label = tst[1]
         self.tst_one_hot = np.eye(10)[self.tst_label]
-
-        self.val_data = val[0]
-        self.val_label = val[1]
-        self.val_one_hot = np.eye(10)[self.val_label]
-
         self.N = self.trn_data.shape[0]
     def train(self, batch_size, indx = None, label = False):
         if indx is None:
@@ -148,6 +149,11 @@ class mnist_sampler(object):
             return self.trn_data[indx, :], self.trn_one_hot[indx]
         else:
             return self.trn_data[indx, :]
+    def get_batch_by_class(self, batch_size, i):
+        assert i in range(10)
+        #print(self.nb_trn_data_per_class[i],self.trn_data_per_class[i].shape)
+        indx = np.random.randint(low = 0, high = self.nb_trn_data_per_class[i], size = batch_size)
+        return self.trn_data_per_class[i][indx,:]
     def load_all(self):
         return self.tst_data, self.tst_label, self.tst_one_hot
 
@@ -168,10 +174,11 @@ class cifar10_sampler(object):
         self.trn_data = trn_data.reshape(trn_data.shape[0],-1)
         self.trn_label = np.concatenate(trn_label, axis=0)
         self.trn_one_hot = np.eye(10)[self.trn_label]
-        self.val_data = self.trn_data[-int(0.1*(len(self.trn_data))):]
-        self.val_label = self.trn_label[-int(0.1*(len(self.trn_label))):]
-        self.val_one_hot = self.trn_one_hot[-int(0.1*(len(self.trn_one_hot))):]
-        self.N = len(self.trn_data)-len(self.val_data)
+        #self.val_data = self.trn_data[-int(0.1*(len(self.trn_data))):]
+        #self.val_label = self.trn_label[-int(0.1*(len(self.trn_label))):]
+        #self.val_one_hot = self.trn_one_hot[-int(0.1*(len(self.trn_one_hot))):]
+        #self.N = len(self.trn_data)-len(self.val_data)
+        self.N = len(self.trn_data)
 
         f = open(data_path + '/test_batch', 'rb')
         dict = pickle.load(f)
@@ -323,12 +330,10 @@ class GMM_indep_sampler(object):
         Y = np.random.choice(self.n_components, size=self.total_size, replace=True, p=weights)
         return np.array([np.random.normal(self.centers[i],self.sd) for i in Y],dtype='float64')
     def split(self,data):
-        #N_test = int(0.1*data.shape[0])
-        N_test = 2000
+        N_test = int(0.1*data.shape[0])
         data_test = data[-N_test:]
         data = data[0:-N_test]
-        #N_validate = int(0.1*data.shape[0])
-        N_validate = 2000
+        N_validate = int(0.1*data.shape[0])
         data_validate = data[-N_validate:]
         data_train = data[0:-N_validate]
         data = np.vstack((data_train, data_validate))
@@ -547,10 +552,3 @@ class DataPool(object):
 
 if __name__=='__main__':
     ys = cifar10_sampler()
-    print ys.trn_data.shape
-    print ys.tst_data.shape
-    print ys.val_data.shape
-    sys.exit()
-
-    ys = UCI_sampler('datasets/YearPredictionMSD/data.npy')
-    print ys.X_train.shape, ys.X_val.shape,ys.X_test.shape

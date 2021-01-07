@@ -127,7 +127,7 @@ class RoundtripModel(object):
         if not os.path.exists(self.save_dir) and is_train:
             os.makedirs(self.save_dir)
 
-        self.saver = tf.train.Saver(max_to_keep=500)
+        self.saver = tf.train.Saver(max_to_keep=5000)
 
         run_config = tf.ConfigProto()
         run_config.gpu_options.per_process_gpu_memory_fraction = 1.0
@@ -174,15 +174,8 @@ class RoundtripModel(object):
                         (epoch, counter, time.time() - start_time, g_loss_adv, h_loss_adv, l2_loss_x, l2_loss_y, \
                         g_loss, h_loss, g_h_loss, dx_loss, dy_loss, d_loss))                 
                 counter+=1
-            if epoch+1 == epochs:
+            if (epoch+1) % 50 == 0 or epoch+1 == epochs:
                 self.save(epoch)
-                data_x, _ = self.x_sampler.load_all()
-                _, tst_label, tst_one_hot = self.y_sampler.load_all()
-                data_y_ = self.predict_y(data_x, tst_one_hot)
-                eval_idx = []
-                for i in range(self.nb_classes):
-                    eval_idx += [j for j,item in enumerate(tst_label) if item==i][:25]
-                self.estimate_py_with_IS(data_y_[eval_idx],tst_label[eval_idx],tst_one_hot[eval_idx],epoch,sd_y=0.3,scale=0.001,sample_size=40000,log=True,save=True)
 
     #predict with y_=G(x)
     def predict_y(self, x, x_d, bs=256):
@@ -231,7 +224,7 @@ class RoundtripModel(object):
         return jcob_pred
 
     #estimate pdf of y (e.g., p(y)) with importance sampling
-    def estimate_py_with_IS(self,y_points,y_label,onehot_label,epoch,sd_y=0.5,scale=0.5,sample_size=40000,bs=1024,log=True,save=True):
+    def estimate_py_with_IS(self,y_points,onehot_label,epoch,sd_y=0.1,scale=0.01,sample_size=40000,bs=1024,log=True,save=True):
         np.random.seed(1024)
         from scipy.stats import t
         from multiprocessing.dummy import Pool as ThreadPool
@@ -318,11 +311,11 @@ class RoundtripModel(object):
             py_list = map(lambda x, y: x*y,py_given_x_list,w_likelihood_ratio_list)
             py_est = np.array([np.mean(item) for item in py_list])
         if save:
-            np.savez('%s/py_est_at_epoch%d_sd%f_scale%f.npz'%(self.save_dir,epoch,sd_y,scale), py_est, y_points,y_label)
+            np.save('%s/py_est_at_epoch%d.npy'%(self.save_dir,epoch), py_est)
         return py_est
 
     #estimate pdf of y (e.g., p(y)) with Laplace approximation (closed-from)
-    def estimate_py_with_CF(self,y_points,y_label,onehot_label,epoch,sd_y=0.5,log=True,save=True):
+    def estimate_py_with_CF(self,y_points,onehot_label,epoch,sd_y=0.1,log=True,save=True):
         from scipy.stats import t
         from multiprocessing.dummy import Pool as ThreadPool
 
@@ -357,7 +350,7 @@ class RoundtripModel(object):
         else:
             py_est = map(lambda x,y: 1./(np.sqrt(2*np.pi)*sd_y)**self.y_dim* sd_y**self.y_dim *np.sqrt(np.linalg.det(x)) * np.exp(-0.5*y), Sigma, c_y)
         if save:
-            np.savez('%s/py_est_at_epoch%d_sd%f_cf.npz'%(self.save_dir,epoch,sd_y), py_est, y_points, y_label)
+            np.save('%s/py_est_at_epoch%d.npy'%(self.save_dir,epoch), py_est)
         return py_est
 
     def save(self,epoch):
@@ -372,13 +365,13 @@ class RoundtripModel(object):
 
         if pre_trained == True:
             print('Loading Pre-trained Model...')
-            checkpoint_dir = 'pre_trained_models/{}/{}_{}_{}_{}}'.format(self.data, self.x_dim,self.y_dim, self.alpha, self.beta)
+            checkpoint_dir = 'pre_trained_models/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,self.y_dim, self.alpha, self.beta)
         else:
             if timestamp == '':
                 print('Best Timestamp not provided.')
                 checkpoint_dir = ''
             else:
-                checkpoint_dir = 'checkpoint/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(self.timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
+                checkpoint_dir = 'checkpoint/density_est_{}_{}_x_dim={}_y_dim={}_alpha={}_beta={}'.format(timestamp,self.data,self.x_dim, self.y_dim, self.alpha, self.beta)
                 self.saver.restore(self.sess, os.path.join(checkpoint_dir, 'model.ckpt-%d'%epoch))
                 print('Restored model weights.')
 
@@ -390,7 +383,7 @@ if __name__ == '__main__':
     parser.add_argument('--dy', type=int, default=10)
     parser.add_argument('--bs', type=int, default=64)
     parser.add_argument('--K', type=int, default=10)
-    parser.add_argument('--epochs', type=int, default=2000)
+    parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--cv_epoch', type=int, default=20)
     parser.add_argument('--patience', type=int, default=20)
     parser.add_argument('--alpha', type=float, default=10.0)
@@ -427,8 +420,10 @@ if __name__ == '__main__':
 
     xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
     if data=='mnist':
+        best_sd, best_scale = 0.1, 0.01
         ys = util.mnist_sampler()
     elif data=='cifar10':
+        best_sd, best_scale = 0.1, 0.01
         ys = util.cifar10_sampler()
     else:
         print("Wrong data name!")
