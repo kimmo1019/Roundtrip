@@ -97,7 +97,7 @@ After training the model, you will have three part of outputs, which are marked 
 
 ### Real Data
 
-Next, we tested Roundtrip on different types of real data including five datasets from UCI machine learning repository and two image datasets. We provided freely public access to all related datasets (UCI datasets, image datasets, and OODS datasets), which can be download from a [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). All you need is to download the corresponding dataset (e.g., `AreM.tar.gz`), uncompress the data under `data` folder.
+Next, we tested Roundtrip on different types of real data including five datasets from UCI machine learning repository and two image datasets. We provided freely public access to all related datasets (UCI datasets, image datasets, and OODS datasets), which can be download from a [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). All you need is to download the corresponding dataset (e.g., `AreM.tar.gz`), uncompress the data under `datasets` folder.
 
 
 #### UCI Datasets

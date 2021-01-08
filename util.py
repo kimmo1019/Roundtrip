@@ -1,13 +1,6 @@
 from __future__ import division
-import scipy.sparse
-import scipy.io
 import numpy as np
 import copy
-from scipy.special import polygamma
-import scipy.special
-from scipy.stats import t, uniform, norm, truncnorm, invgamma, gamma
-from scipy import pi
-from tqdm import tqdm
 import sys
 import pandas as pd
 from os.path import join
