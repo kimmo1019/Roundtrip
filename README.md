@@ -3,7 +3,7 @@
 ![model](https://github.com/kimmo1019/Roundtrip/blob/master/model.jpg)
 
 
-Roundtrip is a deep generative neural density estimator which exploits the advantage of GANs for generating samples and estimates density by either importance sampling or Laplace approximation. This repository provides source code and instructions for reproducing results in our [paper](https://arxiv.org/abs/2004.09017), including simulation data and real data.
+Roundtrip is a deep generative neural density estimator which exploits the advantage of GANs for generating samples and estimates density by either importance sampling or Laplace approximation. This repository provides source code and instructions for using Roundtrip on both simulation data and real data.
 
 ## Table of Contents
 
@@ -16,15 +16,12 @@ Roundtrip is a deep generative neural density estimator which exploits the advan
         - [Image Datasets](#image-datasets)
     - [Outlier Detection](#outlier-detection)
 - [Contact](#contact)
-- [Cite](#Cite)
 - [License](#license)
 
 ## Requirements
 
 - TensorFlow=1.13.1
-- scikit-learn==0.19.0
-
-The related software dependencies can be installed by `pip install -r requirement.txt`
+- Python2
 
 ## Install
 
@@ -162,7 +159,7 @@ After model test, the generated images can be found in the first part of outputs
 
 ### Outlier Detection
 
-We introduced three outlier detection datasets (Shuttle, Mammography, and ForestCover) from [ODDS library](http://odds.cs.stonybrook.edu/). Download the three datasets (`ODDS.tar.gz`) from the [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Uncompress it under the `data` folder.
+We introduced three outlier detection datasets (Shuttle, Mammography, and ForestCover) from [ODDS library](http://odds.cs.stonybrook.edu/). Download the three datasets (`ODDS.tar.gz`) from the [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Uncompress it under the `datasets` folder.
 
 One can run the following commonds to train a Roundtrip model and evaluate by precision at K.
 
@@ -204,21 +201,8 @@ The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calc
 
 Roundtrip has various downstream applications including unsupervised learning, likelihood-free Bayesian inference and sequential Markov chain Monte Carlo (MCMC). Always open to cooperation opportunities. If you're interested, do not hesitate to contact me.
 
-Also Feel free to open an issue in Github or contact `liu-q16@mails.tsinghua.edu.cn` if you have any problem in Roundtrip.
+Also Feel free to open an issue in Github or contact `liuqiao@stanford.edu` if you have any problem in Roundtrip.
 
-## Cite
-
-If you use Roundtrip in your research, please consider citing our paper 
-```
-@misc{liu2020roundtrip,
-    title={Roundtrip: A Deep Generative Neural Density Estimator},
-    author={Qiao Liu and Jiaze Xu and Rui Jiang and Wing Hung Wong},
-    year={2020},
-    eprint={2004.09017},
-    archivePrefix={arXiv},
-    primaryClass={cs.LG}
-}
-```
 
 ## License
 
