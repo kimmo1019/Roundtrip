@@ -22,7 +22,7 @@ def create_2d_grid_data(x1_min, x1_max, x2_min, x2_max,n=100):
 
 def visualization_2d(x1_min, x1_max, x2_min, x2_max, sd_y, scale, n=100):
     v1, v2, data_grid = create_2d_grid_data(x1_min, x1_max, x2_min, x2_max,n)
-    py = RTM.estimate_py_with_IS(data_grid,epoch,sd_y=sd_y,scale=scale,sample_size=40000,log=False,save=False)
+    py = RTM.estimate_py_with_IS(data_grid,epoch,sd_y=sd_y,scale=scale,sample_size=sample_size,log=False,save=False)
     py = py.reshape((n,n))
     plt.figure()
     plt.rcParams.update({'font.size': 22})
@@ -46,7 +46,7 @@ def odd_evaluate():
     score_if = clf.decision_function(X_test)#lower, more abnormal
     pr_iso_forest = precision_at_K(score_if,label_test)
     #Roundtrip
-    py = RTM.estimate_py_with_IS(X_test,epoch,sd_y=best_sd,scale=best_scale,sample_size=5000,log=True,save=False)
+    py = RTM.estimate_py_with_IS(X_test,epoch,sd_y=best_sd,scale=best_scale,sample_size=sample_size,log=True,save=False)
     pr_Roundtrip = precision_at_K(py,label_test)
     print("The precision at K of Roundtrip model is %.4f"%pr_Roundtrip)    
     print("The precision at K of One-class SVM is %.4f"%pr_oneclassSVM)
@@ -64,15 +64,14 @@ def posterior_bayes():
     tst_one_hot_all = []
     eval_idx = []
     for i in range(10):
-        eval_idx += [j for j,item in enumerate(tst_label) if item==i][:100]
-    #for idx in range(len(tst_data)):
+        eval_idx += [j for j,item in enumerate(tst_label) if item==i]
     for idx in eval_idx:
         tst_all.append(np.tile(tst_data[idx],(10,1))) 
         tst_one_hot_all.append(np.eye(10))
     tst_all = np.concatenate(tst_all,axis=0)
     tst_one_hot_all = np.concatenate(tst_one_hot_all,axis=0)
     #For each test image, we evaluate the conditional density under 10 distinct labels
-    py = RTM.estimate_py_with_IS(tst_all,tst_one_hot_all,epoch,sd_y=best_sd,scale=best_scale,sample_size=10000,log=True,save=False)
+    py = RTM.estimate_py_with_IS(tst_all,tst_one_hot_all,epoch,sd_y=best_sd,scale=best_scale,sample_size=sample_size,log=True,save=False)
     py = py.reshape((-1,10))
     pre = np.argmax(py,axis=1)
     acc = accuracy_score(tst_label[eval_idx],pre)
@@ -127,7 +126,6 @@ def parse_params(path):
     timestamp = exp_info[12:27]
     x_dim = int(exp_info.split('=')[1].split('_')[0])
     y_dim = int(exp_info.split('=')[2].split('_')[0])
-    print(x_dim, y_dim, timestamp)
     return x_dim, y_dim, timestamp
 
 
@@ -193,7 +191,7 @@ def find_y_sampler():
         sys.exit()
     return ys
 
-def load_model(path, epoch):
+def load_model(path, epoch, pretrain):
     pool = util.DataPool()
     x_dim, y_dim, timestamp = parse_params(path)
     xs = util.Gaussian_sampler(mean=np.zeros(x_dim),sd=1.0)
@@ -213,24 +211,26 @@ def load_model(path, epoch):
         dx_net = model.Discriminator(input_dim=x_dim,name='dx_net',nb_layers=2,nb_units=128)
         dy_net = model.Discriminator(input_dim=y_dim,name='dy_net',nb_layers=4,nb_units=256)
         RTM = RoundtripModel(g_net, h_net, dx_net, dy_net, xs, ys, data, pool, batch_size=64, alpha=10.0, beta=10.0, df=1, is_train=False)
-    RTM.load(pre_trained=True, timestamp = timestamp, epoch = epoch)
+    RTM.load(pre_trained=pretrain, timestamp = timestamp, epoch = epoch)
     return RTM
 
-    
+
 
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser('')
     parser.add_argument('--data', type=str, default='indep_gmm',help='name of data type')
-    parser.add_argument('--epoch', type=int, default=100,help='which epoch to be loaded')
+    parser.add_argument('--epoch', type=int, default=200,help='which epoch to be loaded')
     parser.add_argument('--path', type=str, default='',help='path to ODDS predicted data')
+    parser.add_argument('--ss', type=int, default=10000,help='importance sampling size')
+    parser.add_argument('--pretrain', type=bool, default=False)
     args = parser.parse_args()
     data = args.data
     epoch = args.epoch
     path = args.path
+    sample_size = args.ss
     model = importlib.import_module('model_img') if data=="mnist" or data=='cifar10' else importlib.import_module('model')
-
-    RTM = load_model(path,epoch)
+    RTM = load_model(path,epoch,pretrain=args.pretrain)
     if data == "indep_gmm":
         visualization_2d(-1.5, 1.5, -1.5, 1.5, 0.05, 0.5)
     elif data == "eight_octagon_gmm":

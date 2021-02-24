@@ -15,6 +15,7 @@ Roundtrip is a deep generative neural density estimator which exploits the advan
         - [UCI Datasets](#uci-datasets)
         - [Image Datasets](#image-datasets)
     - [Outlier Detection](#outlier-detection)
+    - [Pretrian Models](#pretrain-models)
 - [Contact](#contact)
 - [License](#license)
 
@@ -64,9 +65,10 @@ After training the model, you will have three part of outputs, which are marked 
  Next, we want to visulize the estimated density on a 2D region. One can then run the following script. 
 
  ```shell
- CUDA_VISIBLE_DEVICES=0 python evaluate.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data indep_gmm --epoch epoch
+ CUDA_VISIBLE_DEVICES=0 python evaluate.py --data indep_gmm --epoch epoch --path path
  [YYYYMMDD_HHMMSS] --  timestamp in the last training step
  [epoch] -- epoch for loading model weights
+ [path] --path to data folder, e.g., `data/density_est_YYYYMMDD_HHMMSS_indep_gmm_x_dim=2_y_dim=2_alpha=10.0_beta=10.0`
  ```
 
  we suggest to use the epoch recorded in the last line of the `log_test.txt` file in the output part 1). Then the estimated density (.png) on a 2D grid region will be saved in the same data folder `data/density_est_YYYYMMDD_HHMMSS_indep_gmm_x_dim=2_y_dim=2_alpha=10.0_beta=10.0`. 
@@ -80,7 +82,7 @@ After training the model, you will have three part of outputs, which are marked 
     ```
     Density esitmation on a 2D grid region:
     ```shell
-    CUDA_VISIBLE_DEVICES=0 python evaluate.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data eight_octagon_gmm --epoch epoch
+    CUDA_VISIBLE_DEVICES=0 python evaluate.py --data eight_octagon_gmm --epoch epoch --path path
     ```
 - involute
     Model training:
@@ -89,12 +91,12 @@ After training the model, you will have three part of outputs, which are marked 
     ```
     Density esitmation on a 2D grid region:
     ```shell
-    CUDA_VISIBLE_DEVICES=0 python evaluate.py --dx 2 --dy 2 --timestamp YYYYMMDD_HHMMSS --data involute --epoch epoch
+    CUDA_VISIBLE_DEVICES=0 python evaluate.py  --data involute --epoch epoch --path path
     ```
 
 ### Real Data
 
-Next, we tested Roundtrip on different types of real data including five datasets from UCI machine learning repository and two image datasets. We provided freely public access to all related datasets (UCI datasets, image datasets, and OODS datasets), which can be download from a [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). All you need is to download the corresponding dataset (e.g., `AreM.tar.gz`), uncompress the data under `datasets` folder.
+Next, we tested Roundtrip on different types of real data including five datasets from UCI machine learning repository and two image datasets. We provided freely public access to all related datasets (UCI datasets, image datasets, and OODS datasets), which can be download from a [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). All you need is to download the corresponding dataset (e.g., `AreM.tar.gz`), uncompress the data under `datasets` folder. Please also note that we provided various of pretrain models for a quick implementation of Roundtrip without training.
 
 
 #### UCI Datasets
@@ -142,7 +144,7 @@ One can run the conditional image generation and conditional denstiy estimation 
     Model test
     ```shell
     python evaluate.py --data mnist --path path
-    [path] -- path to the frist part of outputs (e.g., data/density_est_YYYYMMDD_HHMMSS_mnist_x_dim=100_y_dim=784_alpha=10.0_beta=10.0)
+    [path] -- path to data folder (e.g., data/density_est_YYYYMMDD_HHMMSS_mnist_x_dim=100_y_dim=784_alpha=10.0_beta=10.0)
     ```
 
 - CIFAR-10
@@ -197,11 +199,15 @@ One can run the following commonds to train a Roundtrip model and evaluate by pr
     ```
 The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calculated and printed.
 
+### Pretrian Models
+
+We provide various of pretrain models for a quick implementation of Roundtrip. First, one needs to download the pretrain models `pre_trained_models.tar.gz` from [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Then uncompress it under `Roundtrip` folder. For the above models that use `evaluate.py` for model evaluation. One can simply add `--pretrain True` to the end of each command. 
+
 ## Contact
 
-Roundtrip has various downstream applications including unsupervised learning, likelihood-free Bayesian inference and sequential Markov chain Monte Carlo (MCMC). Always open to cooperation opportunities. If you're interested, do not hesitate to contact me.
+Roundtrip has various downstream applications including unsupervised learning (see our [paper](https://www.biorxiv.org/content/10.1101/2020.08.17.254730v1.abstract) accepted by Nature Machine Intelligence), likelihood-free Bayesian inference and sequential Markov chain Monte Carlo (MCMC). Always open to cooperation opportunities. If you're interested, do not hesitate to contact me.
 
-Also Feel free to open an issue in Github or contact `liuqiao@stanford.edu` if you have any problem in Roundtrip.
+Also Feel free to open an issue in Github or contact `liu-q16@mails.tsinghua.edu.cn` or `liuqiao@stanford.edu` if you have any problem in Roundtrip.
 
 
 ## License
