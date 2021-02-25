@@ -98,7 +98,7 @@ After training the model, you will have three part of outputs, which are marked 
 
 ### Real Data
 
-Next, we tested Roundtrip on different types of real data including five datasets from UCI machine learning repository and two image datasets. We provided freely public access to all related datasets (UCI datasets, image datasets, and OODS datasets), which can be download from a [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). All you need is to download the corresponding dataset (e.g., `AreM.tar.gz`), uncompress the data under `datasets` folder. Please also note that we provided various of pretrain models for a quick implementation of Roundtrip without training.
+Next, we tested Roundtrip on different types of real data including five datasets from UCI machine learning repository and two image datasets. We provided freely public access to all related datasets (UCI datasets, image datasets, and OODS datasets), which can be download from a [zenodo repository](https://doi.org/10.5281/zenodo.3747144). All you need is to download the corresponding dataset (e.g., `AreM.tar.gz`), uncompress the data under `datasets` folder. Please also note that we provided various of pretrain models for a quick implementation of Roundtrip without training (see pretrain models section).
 
 
 #### UCI Datasets
@@ -163,7 +163,7 @@ After model test, the generated images can be found in the first part of outputs
 
 ### Outlier Detection
 
-We introduced three outlier detection datasets (Shuttle, Mammography, and ForestCover) from [ODDS library](http://odds.cs.stonybrook.edu/). Download the three datasets (`ODDS.tar.gz`) from the [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Uncompress it under the `datasets` folder.
+We introduced three outlier detection datasets (Shuttle, Mammography, and ForestCover) from [ODDS library](http://odds.cs.stonybrook.edu/). Download the three datasets (`ODDS.tar.gz`) from the [zenodo repository](https://doi.org/10.5281/zenodo.3747144). Uncompress it under the `datasets` folder.
 
 One can run the following commonds to train a Roundtrip model and evaluate by precision at K.
 
@@ -203,20 +203,20 @@ The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calc
 
 ### Pretrain Models
 
-We provide various of pretrain models for a quick implementation of Roundtrip. First, one needs to download the pretrain models `pre_trained_models.tar.gz` from [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Then uncompress it under `Roundtrip` folder. For the above models that use `evaluate.py` for model evaluation. One can simply add `--pretrain True` to the end of each command. For an example, one can run 
+We provide various of pretrain models for a quick implementation of Roundtrip. First, one needs to download the pretrain models `pre_trained_models.tar.gz` from [zenodo repository](https://doi.org/10.5281/zenodo.3747144). Then uncompress it under `Roundtrip` folder. For the above models that use `evaluate.py` for model evaluation. One can simply add `--pretrain True` to the end of each command. For an example, one can run 
 
 ```python
 python evaluate.py --data mnist --path path --pretrain True
 ```
 
-This can implement the Beyes posterior probability estimation, which will result in around 98.3% classification accuracy. Note that in pretrain evaluation, the `path` parameter can be any fold path like `density_est_YYYYMMDD_HHMMSS_mnist_x_dim=100_y_dim=784_alpha=10.0_beta=10.0`. `path` name is also used for parameter parsing in `evaluate.py`. 
+This can implement the Beyes posterior probability estimation, which will result in around 98.3% classification accuracy. Note that in pretrain evaluation, the `path` parameter can be any fold path like `density_est_YYYYMMDD_HHMMSS_mnist_x_dim=100_y_dim=784_alpha=10.0_beta=10.0`. `path` name is necessary as it is used for parsing parameters in `evaluate.py`. 
 
 
 ## Contact
 
 Roundtrip has various downstream applications including unsupervised learning (see our [paper](https://www.biorxiv.org/content/10.1101/2020.08.17.254730v1.abstract) accepted by Nature Machine Intelligence), likelihood-free Bayesian inference and sequential Markov chain Monte Carlo (MCMC). Always open to cooperation opportunities. If you're interested, do not hesitate to contact me.
 
-Also Feel free to open an issue in Github or contact `liu-q16@mails.tsinghua.edu.cn` or `liuqiao@stanford.edu` if you have any problem in Roundtrip.
+Also Feel free to open an issue in Github or contact `liuqiao@stanford.edu` if you have any problem in Roundtrip.
 
 
 ## License
