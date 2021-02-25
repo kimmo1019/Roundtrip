@@ -1,6 +1,6 @@
 # Roundtrip
 
-[![DOI](https://zenodo.org/badge/228743708.svg)](https://zenodo.org/badge/latestdoi/228743708)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4560982.svg)](https://doi.org/10.5281/zenodo.3747161)
 
 ![model](https://github.com/kimmo1019/Roundtrip/blob/master/model.jpg)
 
