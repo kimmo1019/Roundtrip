@@ -18,6 +18,7 @@ Roundtrip is a deep generative neural density estimator which exploits the advan
         - [Image Datasets](#image-datasets)
     - [Outlier Detection](#outlier-detection)
     - [Pretrain Models](#pretrain-models)
+- [Further Application](#further-application)
 - [Contact](#contact)
 - [License](#license)
 
@@ -211,12 +212,19 @@ python evaluate.py --data mnist --path path --pretrain True
 
 This can implement the Beyes posterior probability estimation, which will result in around 98.3% classification accuracy. Note that in pretrain evaluation, the `path` parameter can be any fold path like `density_est_YYYYMMDD_HHMMSS_mnist_x_dim=100_y_dim=784_alpha=10.0_beta=10.0`. `path` name is necessary as it is used for parsing parameters in `evaluate.py`. 
 
+## Further Application
+
+Roundtrip can be used for a general-purpose density estimation. Besides that, Roundtrip has various downstream applications including
+
+    - unsupervised learning
+    - likelihood-free Bayesian inference
+    - sequential Markov chain Monte Carlo (MCMC)
+
+For an example, we modified Roundtrip and it then became a unsupervised learning model, one can refer to our [paper](https://www.biorxiv.org/content/10.1101/2020.08.17.254730v1.abstract) accepted by *Nature Machine Intelligence*. 
 
 ## Contact
 
-Roundtrip has various downstream applications including unsupervised learning (see our [paper](https://www.biorxiv.org/content/10.1101/2020.08.17.254730v1.abstract) accepted by Nature Machine Intelligence), likelihood-free Bayesian inference and sequential Markov chain Monte Carlo (MCMC). Always open to cooperation opportunities. If you're interested, do not hesitate to contact me.
-
-Also Feel free to open an issue in Github or contact `liuqiao@stanford.edu` if you have any problem in Roundtrip.
+Please feel free to open an issue in Github or directly contact `liuqiao@stanford.edu` if you have any problem in Roundtrip.
 
 
 ## License
