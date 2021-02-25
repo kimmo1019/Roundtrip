@@ -1,5 +1,7 @@
 # Roundtrip
 
+[![DOI](https://zenodo.org/badge/228743708.svg)](https://zenodo.org/badge/latestdoi/228743708)
+
 ![model](https://github.com/kimmo1019/Roundtrip/blob/master/model.jpg)
 
 
@@ -15,7 +17,7 @@ Roundtrip is a deep generative neural density estimator which exploits the advan
         - [UCI Datasets](#uci-datasets)
         - [Image Datasets](#image-datasets)
     - [Outlier Detection](#outlier-detection)
-    - [Pretrian Models](#pretrain-models)
+    - [Pretrain Models](#pretrain-models)
 - [Contact](#contact)
 - [License](#license)
 
@@ -199,9 +201,16 @@ One can run the following commonds to train a Roundtrip model and evaluate by pr
     ```
 The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calculated and printed.
 
-### Pretrian Models
+### Pretrain Models
 
-We provide various of pretrain models for a quick implementation of Roundtrip. First, one needs to download the pretrain models `pre_trained_models.tar.gz` from [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Then uncompress it under `Roundtrip` folder. For the above models that use `evaluate.py` for model evaluation. One can simply add `--pretrain True` to the end of each command. 
+We provide various of pretrain models for a quick implementation of Roundtrip. First, one needs to download the pretrain models `pre_trained_models.tar.gz` from [zenodo repository](https://zenodo.org/record/3748270#.XpFvgdNKhTY). Then uncompress it under `Roundtrip` folder. For the above models that use `evaluate.py` for model evaluation. One can simply add `--pretrain True` to the end of each command. For an example, one can run 
+
+```python
+python evaluate.py --data mnist --path path --pretrain True
+```
+
+This can implement the Beyes posterior probability estimation, which will result in around 98.3% classification accuracy. Note that in pretrain evaluation, the `path` parameter can be any fold path like `density_est_YYYYMMDD_HHMMSS_mnist_x_dim=100_y_dim=784_alpha=10.0_beta=10.0`. `path` name is also used for parameter parsing in `evaluate.py`. 
+
 
 ## Contact
 
