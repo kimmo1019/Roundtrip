@@ -216,16 +216,22 @@ This can implement the Beyes posterior probability estimation, which will result
 
 Roundtrip can be used for a general-purpose density estimation. Besides that, Roundtrip has various downstream applications including but not limited to
 
-- unsupervised learning
+- supervised learning (already covered in this paper)
+- unsupervised learning (refer to our another [work](https://www.biorxiv.org/content/10.1101/2020.08.17.254730v1.abstract) accepted by *Nature Machine Intelligence*)
 - likelihood-free Bayesian inference
 - sequential Markov chain Monte Carlo (MCMC)
 
-For an example, we modified Roundtrip and it then became a unsupervised learning model, one can refer to our [paper](https://www.biorxiv.org/content/10.1101/2020.08.17.254730v1.abstract) accepted by *Nature Machine Intelligence*. 
 
 ## Contact
 
 Please feel free to open an issue in Github or directly contact `liuqiao@stanford.edu` if you have any problem in Roundtrip.
 
+
+## Citation
+
+If you use Roundtrip in your work, please consider citing our paper as follows:
+
+**Qiao Liu**, Jiaze Xu, Rui Jiang, Wing Hung Wong. Density estimation using deep generative neural networks[J]. Proceedings of the National Academy of Sciences. 2021, 118 (15) e2101344118; DOI: 10.1073/pnas.2101344118.
 
 ## License
 
