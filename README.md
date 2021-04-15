@@ -230,7 +230,7 @@ Please feel free to open an issue in Github or directly contact `liuqiao@stanfor
 
 ## Citation
 
-If you use Roundtrip in your work, please consider citing our paper as follows:
+If you find Roundtrip useful for your work, please consider citing our paper:
 
 **Qiao Liu**, Jiaze Xu, Rui Jiang, Wing Hung Wong. Density estimation using deep generative neural networks[J]. Proceedings of the National Academy of Sciences. 2021, 118 (15) e2101344118; DOI: 10.1073/pnas.2101344118.
 
