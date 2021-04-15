@@ -20,6 +20,7 @@ Roundtrip is a deep generative neural density estimator which exploits the advan
     - [Pretrain Models](#pretrain-models)
 - [Further Application](#further-application)
 - [Contact](#contact)
+- [Citation](#citation)
 - [License](#license)
 
 ## Requirements
