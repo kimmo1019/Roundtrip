@@ -365,7 +365,9 @@ class RoundtripModel(object):
 
         if pre_trained == True:
             print('Loading Pre-trained Model...')
-            checkpoint_dir = 'pre_trained_models/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,self.y_dim, self.alpha, self.beta)
+            checkpoint_dir = 'pre_trained_models/{}'.format(self.data)
+            self.saver.restore(self.sess, os.path.join(checkpoint_dir, 'model.ckpt-best'))
+            print('Restored pre-trained model.')
         else:
             if timestamp == '':
                 print('Best Timestamp not provided.')
@@ -418,7 +420,7 @@ if __name__ == '__main__':
     dy_net = model.Discriminator_img(input_dim=y_dim,name='dy_net',nb_layers=2,nb_units=128,dataset=data)
     pool = util.DataPool()
 
-    xs = util.Gaussian_sampler(N=10000,mean=np.zeros(x_dim),sd=1.0)
+    xs = util.Gaussian_sampler(mean=np.zeros(x_dim),sd=1.0)
     if data=='mnist':
         best_sd, best_scale = 0.1, 0.01
         ys = util.mnist_sampler()

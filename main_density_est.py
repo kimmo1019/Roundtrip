@@ -207,7 +207,7 @@ class RoundtripModel(object):
     def model_selection(self,sample_size=20000):
         data_y_val = self.y_sampler.X_val
         sd_list = [0.05,0.1,0.5]
-        scale_list = [0.005,0.01,0.1,0.5]
+        scale_list = [0.005,0.01,0.1,0.5,1]
         records = []
         for sd in sd_list:
             for scale in scale_list:
@@ -398,7 +398,9 @@ class RoundtripModel(object):
 
         if pre_trained == True:
             print('Loading Pre-trained Model...')
-            checkpoint_dir = 'pre_trained_models/{}/{}_{}_{}_{}'.format(self.data, self.x_dim,self.y_dim, self.alpha, self.beta)
+            checkpoint_dir = 'pre_trained_models/{}'.format(self.data)
+            self.saver.restore(self.sess, os.path.join(checkpoint_dir, 'model.ckpt-best'))
+            print('Restored pre-trained model.')
         else:
             if timestamp == '':
                 print('Best Timestamp not provided.')
@@ -410,14 +412,15 @@ class RoundtripModel(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('')
-    parser.add_argument('--data', type=str, default='indep_gmm')
-    parser.add_argument('--model', type=str, default='model')
-    parser.add_argument('--dx', type=int, default=10)
-    parser.add_argument('--dy', type=int, default=10)
-    parser.add_argument('--bs', type=int, default=64)
-    parser.add_argument('--epochs', type=int, default=2000)
-    parser.add_argument('--cv_epoch', type=int, default=20)
-    parser.add_argument('--patience', type=int, default=20)
+    parser.add_argument('--data', type=str, default='indep_gmm',help='name of data type')
+    parser.add_argument('--model', type=str, default='model',help='model path')
+    parser.add_argument('--dx', type=int, default=10,help='dimension of latent space')
+    parser.add_argument('--dy', type=int, default=10,help='dimension of data space')
+    parser.add_argument('--bs', type=int, default=64,help='batch size for training')
+    parser.add_argument('--ss', type=int, default=40000,help='sample size of importance sampling (IS)')
+    parser.add_argument('--epochs', type=int, default=2000,help='maximum training epoches')
+    parser.add_argument('--cv_epoch', type=int, default=20,help='epoch starting for evaluating')
+    parser.add_argument('--patience', type=int, default=5,help='patience for early stopping')
     parser.add_argument('--alpha', type=float, default=10.0)
     parser.add_argument('--beta', type=float, default=10.0)
     parser.add_argument('--timestamp', type=str, default='')
@@ -429,6 +432,7 @@ if __name__ == '__main__':
     model = importlib.import_module(args.model)
     x_dim = args.dx
     y_dim = args.dy
+    sample_size = args.ss
     batch_size = args.bs
     epochs = args.epochs
     cv_epoch = args.cv_epoch
@@ -446,7 +450,7 @@ if __name__ == '__main__':
     dy_net = model.Discriminator(input_dim=y_dim,name='dy_net',nb_layers=4,nb_units=256)
     pool = util.DataPool()
 
-    xs = util.Gaussian_sampler(N=5000,mean=np.zeros(x_dim),sd=1.0)
+    xs = util.Gaussian_sampler(mean=np.zeros(x_dim),sd=1.0)
 
     if data == "indep_gmm":
         if not use_cv:

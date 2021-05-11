@@ -272,6 +272,13 @@ class Swiss_roll_sampler(object):
         indx = np.random.randint(low = 0, high = self.total_size, size = batch_size)
         return self.X[indx, :]
 
+    def get_density(self,x):
+        assert len(x)==2
+        a = 1./(np.sqrt(2*np.pi)*self.sigma)
+        de = 2*self.sigma**2
+        nu = -np.sum((np.tile(x,[self.total_size,1])-self.X_center.T)**2  ,axis=1)
+        return np.mean(a*np.exp(nu/de))
+
     def load_all(self):
         return self.X, self.Y
 
@@ -423,7 +430,7 @@ class Uniform_sampler(object):
         return self.X, self.Y
 
 class Gaussian_sampler(object):
-    def __init__(self, N, mean, sd=1):
+    def __init__(self, mean, sd=1, N=10000):
         self.total_size = N
         self.mean = mean
         self.sd = sd
@@ -541,6 +548,14 @@ class DataPool(object):
             return results
         else:
             return data
+
+
+def create_2d_grid_data(x1_min, x1_max, x2_min, x2_max,n=100):
+    grid_x1 = np.linspace(x1_min, x1_max, n)
+    grid_x2 = np.linspace(x2_min, x2_max, n)
+    v1,v2 = np.meshgrid(grid_x1,grid_x2)
+    data_grid = np.vstack((v1.ravel(),v2.ravel())).T
+    return v1, v2, data_grid
 
 
 if __name__=='__main__':
