@@ -205,7 +205,7 @@ The precision at K of Roundtrip, One-class SVM and Isolation Forest will be calc
 
 ### Pretrain Models
 
-We provide various of pretrain models for a quick implementation of Roundtrip. First, one needs to download the pretrain models `pre_trained_models.tar.gz` from [zenodo repository](https://doi.org/10.5281/zenodo.3747144). Then uncompress it under `Roundtrip` folder. For the above models that use `evaluate.py` for model evaluation. One can simply add `--pretrain True` to the end of each command. For an example, one can run 
+We provide various of pretrain models for a quick implementation of Roundtrip. First, one needs to download the pretrain models `pre_trained_models.tar.gz` from [zenodo repository](https://doi.org/10.5281/zenodo.3747144). Then uncompress it under `Roundtrip` folder. For the above models that use `evaluate.py` for model evaluation. One can simply add `--pretrain True` to the end of each evaluation command. For an example, one can run 
 
 ```python
 python evaluate.py --data mnist --path path --pretrain True
