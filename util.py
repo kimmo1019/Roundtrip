@@ -319,6 +319,7 @@ class GMM_indep_sampler(object):
         self.dim = dim
         self.sd = sd
         self.n_components = n_components
+        self.bound = bound
         self.centers = np.linspace(-bound, bound, n_components)
         self.X = np.vstack([self.generate_gmm() for _ in range(dim)]).T
         self.X_train, self.X_val,self.X_test = self.split(self.X)
@@ -338,6 +339,20 @@ class GMM_indep_sampler(object):
         data_train = data[0:-N_validate]
         data = np.vstack((data_train, data_validate))
         return data_train, data_validate, data_test
+    
+    def get_density(self, data):
+        assert data.shape[1]==self.dim
+        from scipy.stats import norm
+        centers = np.linspace(-self.bound, self.bound, self.n_components)
+        prob = []
+        for i in range(self.dim):
+            p_mat = np.zeros((self.n_components,len(data)))
+            for j in range(len(data)):
+                for k in range(self.n_components):
+                    p_mat[k,j] = norm.pdf(data[j,i], loc=centers[k], scale=self.sd) 
+            prob.append(np.mean(p_mat,axis=0))
+        prob = np.stack(prob)        
+        return np.prod(prob, axis=0)
 
     def train(self, batch_size):
         indx = np.random.randint(low = 0, high = self.nb_train, size = batch_size)
