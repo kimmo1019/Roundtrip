@@ -28,6 +28,25 @@ Roundtrip is a deep generative neural density estimator which exploits the advan
 - TensorFlow==1.13.1
 - Python==2.7.1
 
+## Docker 
+
+### Building the imgae form the docker file : 
+```shell
+docker build -t roundtrip:train .
+```
+
+### Run the imgae with GPU :
+```shell 
+docker run --rm -i -t --gpus all -v [path you want to mount]:/app roundtrip:train /bin/bash
+```
+PS: you can also run without gpu by removing : `--gpus all `
+
+### pulling the image directly 
+I have prepared a ready to pull docker image as well :
+```shell 
+docker pull codgas/ubuntu18.04_cuda10.0_cudnn7_tf1.13.1_py2.7
+```
+
 ## Install
 
 Roundtrip can be downloaded by
