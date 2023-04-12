@@ -64,4 +64,6 @@ Under the `src` folder, the `main.py` script is provided for reproducing the den
 
 Taking the indepedent Gaussian mixture data for an example, one can run the following commond to reproduce the results.
 
+```
 python3 main.py -c configs/config_indep_gmm.yaml
+```
