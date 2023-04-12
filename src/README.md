@@ -62,8 +62,33 @@ location such that pulled changes are also reflected in the environment.
   
 Under the `src` folder, the `main.py` script is provided for reproducing the density estimation results in the paper.
 
-Taking the indepedent Gaussian mixture data for an example, one can run the following commond to reproduce the results.
+We provide configuration files for different datasets in `configs` folder. One can run the following commond to reproduce the results.
 
 ```
-python3 main.py -c configs/config_indep_gmm.yaml
+python3 main.py -c configs/config_[DATASET].yaml
 ```
+
+`DATASET` can be `indep_gmm`, 'involute', 'mnist', and 'cifar10'.
+
+## Command line
+
+After installing Roundtrip through pip, one can get the usage of this command line by
+
+```
+roundtrip -h
+```
+
+This command line takes `npy`,`cvs`, or `txt` as input (nb_samples x nb_feats), one can run the following command to perform Roundtrip density estimation.
+
+```
+roundtrip -input data.npy --output_dir ./ -z_dim 2 -sd_x 0.5 -scale 0.5 
+```
+The results will be saved under the `output_dir` folder.
+
+## Use Python API
+
+We provide a tutorial notebook for implmentating the Roundtrip density estimation with Python API.
+
+
+
+
