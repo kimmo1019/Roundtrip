@@ -1,5 +1,6 @@
 # Roundtrip
 
+[![PyPI](https://img.shields.io/pypi/v/pyroundtrip)](https://pypi.org/project/pyroundtrip/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4560982.svg)](https://doi.org/10.5281/zenodo.3747161)
 
 ![model](https://github.com/kimmo1019/Roundtrip/blob/master/model.jpg)
