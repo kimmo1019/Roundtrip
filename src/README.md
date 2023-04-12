@@ -1,6 +1,5 @@
-[![PyPI](https://img.shields.io/pypi/v/CausalEGM)](https://pypi.org/project/CausalEGM/)
+[![PyPI](https://img.shields.io/pypi/v/pyroundtrip)](https://pypi.org/project/pyroundtrip/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4560982.svg)](https://doi.org/10.5281/zenodo.3747161)
-[![Travis (.org)](https://app.travis-ci.com/kimmo1019/CausalEGM.svg?branch=main)](https://app.travis-ci.com/github/kimmo1019/CausalEGM)
 
 
 # <a href='https://github.com/kimmo1019/Roundtrip'><img src='https://github.com/kimmo1019/Roundtrip/blob/master/model.jpg' align="left" height="60" /></a> Roundtrip: density estimation with deep generative neural networks 
