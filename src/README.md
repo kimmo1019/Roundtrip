@@ -8,7 +8,7 @@
 
 Roundtrip is a deep generative neural density estimator which exploits the advantage of GANs for generating samples and estimates density by either importance sampling or Laplace approximation. 
 
-Since TensorFLow v1 is outdated, this tutorial provides instructions for using Roundtrip with Python3 and TensorFlow v2. Now Roundtrip is available on [PyPI](https://pypi.org/project/pyroundtrip/).
+Since TensorFlow v2 is not compatible with TensorFlow v1, the Roundtrip model was reimplemented with Python3 and TensorFlow b2. This tutorial provides instructions for using Roundtrip with Python3 and TensorFlow v2. Now Roundtrip is available on [PyPI](https://pypi.org/project/pyroundtrip/).
   
 ## Installation
 
@@ -35,7 +35,7 @@ Roundtrip can be installed via [PyPI](https://pypi.org/project/pyroundtrip/) wit
 
 ### GPU prerequisites (optional)
 
-Training CausalEGM model will be faster when accelerated with a GPU (not a must). Before installing CausalEGM, the CUDA and cuDNN environment should be setup.
+Training Roundtrip model will be faster when accelerated with a GPU (not a must). Before installing Roundtrip, the CUDA and cuDNN environment should be setup.
 
 
 ### Install with pip
