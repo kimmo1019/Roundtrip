@@ -61,3 +61,7 @@ location such that pulled changes are also reflected in the environment.
 ## Results reproduction
   
 Under the `src` folder, the `main.py` script is provided for reproducing the density estimation results in the paper.
+
+Taking the indepedent Gaussian mixture data for an example, one can run the following commond to reproduce the results.
+
+python3 main.py -c configs/config_indep_gmm.yaml
