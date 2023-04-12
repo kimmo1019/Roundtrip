@@ -1,0 +1,17 @@
+dataset: cifar10
+output_dir: '.'
+x_dim: 32
+z_dim: 10
+lr: 0.0002
+alpha: 10
+beta: 1
+gamma: 0
+g_d_freq: 1
+g_units: [64,32]
+e_units: [32,64]
+dz_units: [20,10]
+dx_units: [32,16]
+save_model: True
+sd_x: 0.05
+scale: 0.5
+sample_size: 20000

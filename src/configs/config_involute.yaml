@@ -1,0 +1,17 @@
+dataset: involute
+output_dir: '.'
+x_dim: 2
+z_dim: 2
+lr: 0.0002
+alpha: 10
+beta: 1
+gamma: 0
+g_d_freq: 1
+g_units: [512,512,512,512,512,512,512,512,512,512]
+e_units: [256,256,256,256,256,256,256,256,256,256]
+dz_units: [128,128]
+dx_units: [256,256,256,256]
+save_model: False
+sd_x: 0.4
+scale: 0.5
+sample_size: 20000
