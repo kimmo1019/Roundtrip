@@ -57,3 +57,7 @@ Alteratively, pyroundtrip can also be installed through GitHub using::
 
 ``-e`` is short for ``--editable`` and links the package to the original cloned
 location such that pulled changes are also reflected in the environment.
+
+## Results reproduction
+  
+Under the `src` folder, the `main.py` script is provided for reproducing the density estimation results in the paper.
