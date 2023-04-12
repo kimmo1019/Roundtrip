@@ -8,11 +8,11 @@
 
 Roundtrip is a deep generative neural density estimator which exploits the advantage of GANs for generating samples and estimates density by either importance sampling or Laplace approximation. This repository provides source code and instructions for using Roundtrip on both simulation data and real data.
 
-## Table of Contents
+## News
 
 - Apr/2023: Roundtrip is available from [PyPI](https://pypi.org/project/pyroundtrip/).
 
-- Mar/2023: Roundtrip supports Python3 and Tensorflow 2.
+- Mar/2023: Roundtrip supports Python3 and Tensorflow 2. See [instructions](https://github.com/kimmo1019/Roundtrip/tree/master/src).
 
 ## Table of Contents
 
