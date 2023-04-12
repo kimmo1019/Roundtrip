@@ -1,7 +1,7 @@
 import setuptools
 
 setuptools.setup(
-    name="Roundtrip", 
+    name="pyroundtrip", 
     version="2.0.0",
     author="Qiao Liu",
     author_email="liuqiao@stanford.edu",
@@ -24,6 +24,6 @@ setuptools.setup(
     python_requires='>=3.7',
     entry_points={
     'console_scripts': [
-        'roundtrip = Roundtrip.cli:main',
+        'roundtrip = pyroundtrip.cli:main',
     ]},
 )
