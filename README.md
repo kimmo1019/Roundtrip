@@ -10,6 +10,12 @@ Roundtrip is a deep generative neural density estimator which exploits the advan
 
 ## Table of Contents
 
+- Apr/2023: Roundtrip is available from [PyPI](https://pypi.org/project/pyroundtrip/).
+
+- Mar/2023: Roundtrip supports Python3 and Tensorflow 2.
+
+## Table of Contents
+
 - [Requirements](#Requirements)
 - [Install](#install)
 - [Reproduction](#reproduction)
