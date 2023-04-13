@@ -10,7 +10,7 @@ Roundtrip is a deep generative neural density estimator which exploits the advan
 
 ## News
 
-- Apr/2023: A detailed Ipython notebook tutorial for using new version of Roundtrip is provide [link](https://github.com/kimmo1019/Roundtrip/blob/master/src/tutorial.ipynb).
+- Apr/2023: A detailed Ipython notebook tutorial for using new version of Roundtrip is provide [here](https://github.com/kimmo1019/Roundtrip/blob/master/src/tutorial.ipynb).
 
 - Apr/2023: Roundtrip is available from [PyPI](https://pypi.org/project/pyroundtrip/).
 
