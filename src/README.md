@@ -68,7 +68,7 @@ We provide configuration files for different datasets in `configs` folder. One c
 python3 main.py -c configs/config_[DATASET].yaml
 ```
 
-`DATASET` can be `indep_gmm`, 'involute', 'mnist', and 'cifar10'.
+`DATASET` can be `indep_gmm`, `involute`, `mnist`, and `cifar10`.
 
 ## Command line
 
